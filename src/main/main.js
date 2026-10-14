@@ -6,7 +6,7 @@
 // server, because that is where the Decart key and the customer balances live.
 //
 // How: the pages run in their own session where requests for
-// https://eclipselivecam.com are intercepted. Page and asset requests are
+// https://eclipselivecam.online are intercepted. Page and asset requests are
 // answered from src/web; /api/ requests are passed through to the real server.
 // Keeping the real origin means login cookies, the Studio's billing beacons and
 // Decart's origin checks all behave exactly as they did on the website.
@@ -20,7 +20,7 @@ const fs = require('fs');
 const vcam = require('./vcam');
 const activation = require('./activation');
 
-const SITE_HOST = 'eclipselivecam.com';
+const SITE_HOST = 'eclipselivecam.online';
 const SITE_ORIGIN = `https://${SITE_HOST}`;
 // Override for local testing only, e.g. ECLIPSE_API_ORIGIN=http://127.0.0.1:8080
 const API_ORIGIN = process.env.ECLIPSE_API_ORIGIN || SITE_ORIGIN;
@@ -113,10 +113,10 @@ function installRequestHandler(ses) {
       if (url.pathname.startsWith('/api/')) {
         try {
           return await forwardApi(req, url, ses);
-        } catch {
+        } catch (err) {
           return new Response(JSON.stringify({
             ok: false,
-            error: 'Could not reach the EclipseLiveCam server. Check your internet connection.',
+            error: `Could not reach the EclipseLiveCam server. Check your internet connection. (${err.message})`,
           }), { status: 503, headers: { 'content-type': 'application/json' } });
         }
       }

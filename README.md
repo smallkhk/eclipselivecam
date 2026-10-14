@@ -9,7 +9,7 @@ Google Meet, Teams, Discord, OBS and so on. You don't need OBS.
 - **Pages are built in.** Every screen (Studio, Create, Top up, Login …) is in
   `src/web` and ships inside the app. The app doesn't load the website.
 - **The account API is still online.** Login, credits, payments and AI tokens
-  still go to `https://eclipselivecam.com/api/…` on your cPanel server, because
+  still go to `https://eclipselivecam.online/api/…` on your cPanel server, because
   that's where the Decart API key and customer balances live. Keep the `api/`
   and `data/` folders on the server. You can remove the website pages if you like.
 - **Virtual camera.** The camera is [softcam](https://github.com/tshino/softcam)
