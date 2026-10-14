@@ -6,6 +6,10 @@ on:
   pull_request:
   workflow_dispatch:
 
+# Needed to create GitHub Releases.
+permissions:
+  contents: write
+
 env:
   # Pinned softcam release commit (MIT). Bump deliberately; the patch script
   # fails loudly if the lines it rebrands have moved.
@@ -67,3 +71,35 @@ jobs:
           name: EclipseLiveCam-Windows-Installer
           path: dist/*.exe
           retention-days: 30
+
+      # Every build pushed to a branch becomes a GitHub Release with the
+      # installer attached. Builds from main are the "Latest" release; builds
+      # from other branches are marked as pre-releases (test builds).
+      - name: Release tag
+        if: github.event_name != 'pull_request'
+        id: tag
+        shell: bash
+        run: |
+          version=$(node -p "require('./package.json').version")
+          echo "tag=v${version}-build.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
+          echo "name=EclipseLiveCam ${version} (build ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
+
+      - name: Publish release
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ${{ steps.tag.outputs.tag }}
+          name: ${{ steps.tag.outputs.name }}
+          target_commitish: ${{ github.sha }}
+          prerelease: ${{ github.ref != 'refs/heads/main' }}
+          make_latest: ${{ github.ref == 'refs/heads/main' }}
+          fail_on_unmatched_files: true
+          files: dist/*.exe
+          body: |
+            Windows installer for EclipseLiveCam with the built-in virtual camera.
+
+            1. Download **EclipseLiveCam-Setup-*.exe** below and run it (accept the admin prompt — it installs the camera).
+            2. Enter your activation key, log in and start a live stream.
+            3. In Zoom, Meet, Teams, Discord or OBS pick **EclipseLiveCam** as your camera.
+
+            Built from `${{ github.ref_name }}` at ${{ github.sha }}.

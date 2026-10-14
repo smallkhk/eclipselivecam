@@ -27,6 +27,7 @@
         "to": "vcam"
       }
     ],
+    "artifactName": "EclipseLiveCam-Setup-${version}.${ext}",
     "win": {
       "target": [
         {
