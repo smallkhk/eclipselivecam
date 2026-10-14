@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8"/>
+<meta name="viewport" content="width=device-width,initial-scale=1.0"/>
+<title>EclipseLiveCam</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+
+  html, body {
+    width: 100%; height: 100%;
+    background: transparent;
+    overflow: hidden;
+    font-family: 'Segoe UI', system-ui, sans-serif;
+  }
+
+  .card {
+    width: 480px; height: 320px;
+    background: linear-gradient(150deg, #0c1425 0%, #050810 60%);
+    border-radius: 20px;
+    border: 1px solid rgba(56,189,248,.25);
+    box-shadow:
+      0 0 0 1px rgba(56,189,248,.1),
+      0 30px 80px rgba(0,0,0,.8),
+      0 0 60px rgba(14,165,233,.15);
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    gap: 0;
+    position: relative;
+    overflow: hidden;
+    -webkit-app-region: drag;
+  }
+
+  /* animated background mesh */
+  .card::before {
+    content: '';
+    position: absolute; inset: 0;
+    background:
+      radial-gradient(circle at 20% 30%, rgba(14,165,233,.18), transparent 50%),
+      radial-gradient(circle at 80% 70%, rgba(139,92,246,.15), transparent 50%),
+      radial-gradient(circle at 60% 20%, rgba(245,158,11,.1), transparent 40%);
+    animation: pulse 4s ease-in-out infinite alternate;
+  }
+  @keyframes pulse {
+    from { opacity: .7; transform: scale(1); }
+    to   { opacity: 1;  transform: scale(1.05); }
+  }
+
+  /* Eclipse emblem */
+  .emblem {
+    width: 80px; height: 80px;
+    position: relative;
+    margin-bottom: 20px;
+    z-index: 1;
+  }
+  .emblem-core {
+    position: absolute; inset: 0; border-radius: 50%;
+    background: radial-gradient(circle at 38% 35%, #0d1e3d, #050810 72%);
+    box-shadow:
+      0 0 0 1.5px rgba(56,189,248,.5),
+      0 0 25px rgba(14,165,233,.5),
+      0 0 55px rgba(139,92,246,.25);
+  }
+  .emblem-corona {
+    position: absolute; inset: -8px; border-radius: 50%;
+    background: conic-gradient(from 0deg, transparent 48%, #fbbf24 66%, #f59e0b 76%, #38bdf8 90%, transparent);
+    filter: blur(3px);
+    animation: spin 4s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .app-name {
+    font-size: 26px;
+    font-weight: 800;
+    letter-spacing: -0.03em;
+    background: linear-gradient(135deg, #38bdf8, #8b5cf6 55%, #f59e0b);
+    -webkit-background-clip: text;
+    -webkit-text-fill-color: transparent;
+    background-clip: text;
+    z-index: 1;
+    margin-bottom: 6px;
+  }
+
+  .tagline {
+    font-size: 12px;
+    color: rgba(232,240,255,.4);
+    letter-spacing: .12em;
+    text-transform: uppercase;
+    z-index: 1;
+    margin-bottom: 32px;
+  }
+
+  /* loading bar */
+  .bar-track {
+    width: 200px; height: 2px;
+    background: rgba(255,255,255,.08);
+    border-radius: 2px;
+    overflow: hidden;
+    z-index: 1;
+  }
+  .bar-fill {
+    height: 100%;
+    background: linear-gradient(90deg, #38bdf8, #8b5cf6, #f59e0b);
+    border-radius: 2px;
+    width: 0%;
+    animation: load 2.6s cubic-bezier(.4,0,.2,1) forwards;
+  }
+  @keyframes load {
+    0%   { width: 0%; }
+    30%  { width: 35%; }
+    60%  { width: 65%; }
+    85%  { width: 88%; }
+    100% { width: 100%; }
+  }
+
+  .version {
+    position: absolute;
+    bottom: 16px;
+    right: 20px;
+    font-size: 10px;
+    color: rgba(232,240,255,.2);
+    z-index: 1;
+    letter-spacing: .06em;
+  }
+</style>
+</head>
+<body>
+  <div class="card">
+    <div class="emblem">
+      <div class="emblem-corona"></div>
+      <div class="emblem-core"></div>
+    </div>
+    <div class="app-name">EclipseLiveCam</div>
+    <div class="tagline">Live AI Transformation Studio</div>
+    <div class="bar-track"><div class="bar-fill"></div></div>
+    <div class="version">v1.0.0</div>
+  </div>
+</body>
+</html>

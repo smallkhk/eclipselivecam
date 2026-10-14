@@ -1,0 +1,56 @@
+{
+  "name": "eclipselivecam",
+  "version": "2.0.0",
+  "description": "EclipseLiveCam — live AI transformation studio with a built-in virtual camera",
+  "author": "EclipseLiveCam",
+  "private": true,
+  "main": "src/main/main.js",
+  "scripts": {
+    "start": "electron .",
+    "build": "electron-builder --win --x64 --publish never"
+  },
+  "build": {
+    "appId": "com.eclipselivecam.app",
+    "productName": "EclipseLiveCam",
+    "copyright": "© 2026 EclipseLiveCam",
+    "directories": {
+      "output": "dist"
+    },
+    "files": [
+      "src/**/*",
+      "assets/**/*",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "native/out",
+        "to": "vcam"
+      }
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": ["x64"]
+        }
+      ],
+      "icon": "assets/icon.ico"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": true,
+      "allowToChangeInstallationDirectory": true,
+      "installerIcon": "assets/icon.ico",
+      "uninstallerIcon": "assets/icon.ico",
+      "installerHeaderIcon": "assets/icon.ico",
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "EclipseLiveCam",
+      "include": "build/installer.nsh"
+    }
+  },
+  "devDependencies": {
+    "electron": "41.10.7",
+    "electron-builder": "26.15.3"
+  }
+}
