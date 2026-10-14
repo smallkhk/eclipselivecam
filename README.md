@@ -26,6 +26,16 @@ Studio (AI output video)
 Electron main process ──stdin──► eclipse-vcam.exe ──► softcam.dll ──► "EclipseLiveCam" in Zoom / Meet / Discord / OBS
 ```
 
+- **Activation keys.** On first launch the app asks for an `ECLPS-XXXXX-XXXXX-XXXXX`
+  key, the same keys you generate in the admin panel. The device token is
+  stored encrypted and rechecked with the server on every launch, so revoking
+  a key in the admin panel locks that PC again. If the server can't be reached,
+  an already-activated PC is let in.
+- **Title bar and settings.** The app has its own dark title bar (camera
+  status, settings, minimise/maximise/close). Settings covers zoom, start
+  maximised, always on top, reload, clear cache (you stay logged in) and
+  reinstalling the camera.
+
 Notes:
 - The camera is video only. People keep their normal microphone in the call app.
 - Most apps see DirectShow cameras (Zoom, Teams, Discord, OBS, Chrome/Edge/Meet).
@@ -46,6 +56,8 @@ The installer asks for admin rights, because registering a camera needs them.
 
 ```
 src/main/main.js       app window; serves src/web and forwards /api to the server
+src/main/shell.html    title bar + settings screen (shell.js, shell-preload.js)
+src/main/activation.js stores / re-verifies the device activation token
 src/main/vcam.js       starts the camera helper and streams frames to it
 src/main/preload.js    bridge the pages use to reach the camera
 src/main/splash.html   startup splash

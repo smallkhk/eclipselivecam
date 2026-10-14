@@ -60,6 +60,15 @@ S('form').addEventListener('submit', async (e) => {
       key: S('key').value.trim().toUpperCase(),
       device_token: localStorage.getItem(STORE) || '',
     });
+    if (window.eclipseDesktop) {
+      // Desktop app: hand the token to the app, which verifies it with the
+      // server, stores it securely and unlocks the Studio.
+      if (!(await window.eclipseDesktop.activate(r.device_token))) {
+        throw new Error('Activation could not be confirmed with the server. Please try again.');
+      }
+      location.href = '/studio.html';
+      return;
+    }
     localStorage.setItem(STORE, r.device_token);
     showDone(r.device_token);
   } catch (err) {
@@ -72,6 +81,7 @@ S('copyTok').addEventListener('click', () => copyText(S('tokenOut').textContent,
 
 // Already activated on this device? Skip straight to the confirmation.
 (async function () {
+  if (window.eclipseDesktop) return;
   const t = localStorage.getItem(STORE);
   if (!t) return;
   try {

@@ -2,30 +2,39 @@
 //
 // The app no longer loads the website. Every page (studio, login, top-up …)
 // ships inside the app under src/web. Only the account API — login, credits,
-// payments and the short-lived AI tokens — still goes to the server, because
-// that is where the Decart key and the customer balances live.
+// payments, activation and the short-lived AI tokens — still goes to the
+// server, because that is where the Decart key and the customer balances live.
 //
-// How: the app window runs in its own session where requests for
+// How: the pages run in their own session where requests for
 // https://eclipselivecam.com are intercepted. Page and asset requests are
 // answered from src/web; /api/ requests are passed through to the real server.
 // Keeping the real origin means login cookies, the Studio's billing beacons and
 // Decart's origin checks all behave exactly as they did on the website.
-const { app, BrowserWindow, session, shell, Menu, ipcMain, net } = require('electron');
+//
+// Window layout: the frameless window's own page (shell.html) draws the custom
+// title bar and the settings screen. The app pages live in a WebContentsView
+// placed below the title bar, so their layouts are untouched.
+const { app, BrowserWindow, WebContentsView, session, shell, Menu, ipcMain } = require('electron');
 const path = require('path');
 const fs = require('fs');
 const vcam = require('./vcam');
+const activation = require('./activation');
 
 const SITE_HOST = 'eclipselivecam.com';
 const SITE_ORIGIN = `https://${SITE_HOST}`;
 // Override for local testing only, e.g. ECLIPSE_API_ORIGIN=http://127.0.0.1:8080
 const API_ORIGIN = process.env.ECLIPSE_API_ORIGIN || SITE_ORIGIN;
 const START_URL = `${SITE_ORIGIN}/studio.html`;
+const ACTIVATE_PATH = '/activate.html';
 const WEB_ROOT = path.join(__dirname, '..', 'web');
 const PARTITION = 'persist:eclipse';
+const TITLEBAR_HEIGHT = 36;
 
 let mainWindow = null;
+let contentView = null;
 let splashWindow = null;
 let quitting = false;
+let activated = false;
 
 // ── SINGLE INSTANCE ──────────────────────────────────────────────────────────
 // Only one process can own the virtual camera.
@@ -68,6 +77,12 @@ const MIME = {
 function serveLocal(url) {
   let rel = decodeURIComponent(url.pathname);
   if (rel === '/' || rel === '') rel = '/studio.html';
+
+  // Until this device is activated, every page leads to the activation screen.
+  if (!activated && rel.endsWith('.html') && rel !== ACTIVATE_PATH) {
+    return new Response(null, { status: 302, headers: { location: SITE_ORIGIN + ACTIVATE_PATH } });
+  }
+
   const file = path.normalize(path.join(WEB_ROOT, rel));
   if (!file.startsWith(WEB_ROOT + path.sep) || !fs.existsSync(file) || !fs.statSync(file).isFile()) {
     return new Response('Not found', { status: 404, headers: { 'content-type': 'text/plain' } });
@@ -119,17 +134,57 @@ function isAppUrl(u) {
   } catch { return false; }
 }
 
-// ── IPC ──────────────────────────────────────────────────────────────────────
+// ── IPC: app pages ───────────────────────────────────────────────────────────
 ipcMain.on('vcam:frame', (e, data) => vcam.frame(data));
 ipcMain.handle('vcam:status', () => vcam.status());
 ipcMain.handle('vcam:install', async () => { await vcam.install(); vcam.stop(); vcam.start(); return vcam.status(); });
 ipcMain.handle('app:version', () => app.getVersion());
-ipcMain.handle('app:open-external', (e, url) => {
-  if (/^https?:\/\//.test(url) || /^mailto:/.test(url)) shell.openExternal(url);
+
+// The activation page hands over the device token it just received. We check
+// it with the server ourselves before unlocking, so the page can't fake it.
+ipcMain.handle('app:activate', async (e, token) => {
+  if (typeof token !== 'string' || !token) return false;
+  const ok = await activation.verify(session.fromPartition(PARTITION), API_ORIGIN, token);
+  if (ok !== true) return false;
+  activation.save(token);
+  activated = true;
+  return true;
 });
 
+// ── IPC: title bar + settings ────────────────────────────────────────────────
+ipcMain.handle('shell:info', () => ({
+  version: app.getVersion(),
+  settings: loadSettings(),
+  maximized: !!mainWindow?.isMaximized(),
+  activated,
+  camera: vcam.status(),
+}));
+ipcMain.handle('shell:minimize', () => mainWindow?.minimize());
+ipcMain.handle('shell:toggle-maximize', () => {
+  if (!mainWindow) return;
+  if (mainWindow.isMaximized()) mainWindow.unmaximize(); else mainWindow.maximize();
+});
+ipcMain.handle('shell:close', () => mainWindow?.close());
+ipcMain.handle('shell:show-settings', (e, show) => setSettingsVisible(!!show));
+ipcMain.handle('shell:reload', () => contentView?.webContents.reload());
+ipcMain.handle('shell:clear-cache', async () => {
+  // HTTP cache only — cookies (the login) are kept.
+  await session.fromPartition(PARTITION).clearCache();
+  return true;
+});
+ipcMain.handle('shell:set-setting', (e, key, value) => {
+  if (!['zoom', 'startMaximized', 'alwaysOnTop'].includes(key)) return;
+  saveSettings({ ...loadSettings(), [key]: value });
+  if (key === 'zoom') contentView?.webContents.setZoomFactor(clampZoom(value) / 100);
+  if (key === 'alwaysOnTop') mainWindow?.setAlwaysOnTop(!!value);
+});
+
+const clampZoom = (z) => Math.min(150, Math.max(70, Number(z) || 100));
+
 vcam.onStatus((s) => {
-  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('vcam:status', s);
+  for (const wc of [mainWindow?.webContents, contentView?.webContents]) {
+    if (wc && !wc.isDestroyed()) wc.send('vcam:status', s);
+  }
 });
 
 // ── WINDOWS ──────────────────────────────────────────────────────────────────
@@ -148,9 +203,21 @@ function closeSplash() {
   splashWindow = null;
 }
 
+function layoutContent() {
+  if (!mainWindow || !contentView) return;
+  const { width, height } = mainWindow.getContentBounds();
+  contentView.setBounds({ x: 0, y: TITLEBAR_HEIGHT, width, height: Math.max(0, height - TITLEBAR_HEIGHT) });
+}
+
+function setSettingsVisible(show) {
+  if (!contentView || !mainWindow) return;
+  contentView.setVisible(!show);
+  mainWindow.webContents.send('shell:settings-visible', show);
+  if (!show) contentView.webContents.focus();
+}
+
 function createMain() {
   const s = loadSettings();
-  const ses = session.fromPartition(PARTITION);
 
   mainWindow = new BrowserWindow({
     width: s.width || 1300,
@@ -158,9 +225,21 @@ function createMain() {
     minWidth: 940,
     minHeight: 620,
     show: false,
+    frame: false,             // we draw our own title bar
     title: 'EclipseLiveCam',
     icon: path.join(__dirname, '..', '..', 'assets', 'icon.ico'),
     backgroundColor: '#0c0c0e',
+    alwaysOnTop: !!s.alwaysOnTop,
+    webPreferences: {
+      contextIsolation: true,
+      nodeIntegration: false,
+      sandbox: true,
+      preload: path.join(__dirname, 'shell-preload.js'),
+    },
+  });
+  mainWindow.loadFile(path.join(__dirname, 'shell.html'));
+
+  contentView = new WebContentsView({
     webPreferences: {
       partition: PARTITION,
       contextIsolation: true,
@@ -172,25 +251,39 @@ function createMain() {
       backgroundThrottling: false,
     },
   });
+  contentView.setBackgroundColor('#0c0c0e');
+  mainWindow.contentView.addChildView(contentView);
+  layoutContent();
+  mainWindow.on('resize', layoutContent);
+  mainWindow.on('maximize', () => { layoutContent(); mainWindow.webContents.send('shell:maximized', true); });
+  mainWindow.on('unmaximize', () => { layoutContent(); mainWindow.webContents.send('shell:maximized', false); });
 
   mainWindow.on('resized', () => {
+    if (mainWindow.isMaximized()) return;
     const [width, height] = mainWindow.getSize();
     saveSettings({ ...loadSettings(), width, height });
   });
 
+  const wc = contentView.webContents;
   // Links to anything outside the app open in the normal browser.
-  mainWindow.webContents.setWindowOpenHandler(({ url }) => {
+  wc.setWindowOpenHandler(({ url }) => {
     if (!isAppUrl(url) && /^(https?:|mailto:)/.test(url)) shell.openExternal(url);
     return { action: 'deny' };
   });
-  mainWindow.webContents.on('will-navigate', (e, url) => {
+  wc.on('will-navigate', (e, url) => {
     if (!isAppUrl(url)) {
       e.preventDefault();
       if (/^(https?:|mailto:)/.test(url)) shell.openExternal(url);
     }
   });
+  wc.on('did-finish-load', () => {
+    if (s.zoom) wc.setZoomFactor(clampZoom(loadSettings().zoom) / 100);
+  });
+  // The shell's own page is never navigated away from.
+  mainWindow.webContents.on('will-navigate', (e) => e.preventDefault());
+  mainWindow.webContents.setWindowOpenHandler(() => ({ action: 'deny' }));
 
-  mainWindow.once('ready-to-show', () => {
+  wc.once('did-finish-load', () => {
     closeSplash();
     mainWindow.show();
     if (s.startMaximized) mainWindow.maximize();
@@ -202,18 +295,28 @@ function createMain() {
     if (quitting) return;
     e.preventDefault();
     quitting = true;
-    const wc = mainWindow.webContents;
     const settle = wc.executeJavaScript('window.__eclipseStop ? window.__eclipseStop() : null', true)
       .catch(() => {});
     const timeout = new Promise((r) => setTimeout(r, 4000));
     Promise.race([settle, timeout]).finally(() => mainWindow?.destroy());
   });
-  mainWindow.on('closed', () => { mainWindow = null; });
+  mainWindow.on('closed', () => { mainWindow = null; contentView = null; });
 
-  mainWindow.loadURL(START_URL);
+  wc.loadURL(activated ? START_URL : SITE_ORIGIN + ACTIVATE_PATH);
 }
 
-app.whenReady().then(() => {
+// Re-check a saved activation with the server. A revoked key locks the app
+// again; if the server can't be reached we let the device in rather than
+// locking out paying customers during an outage.
+async function checkActivation(ses) {
+  const token = activation.load();
+  if (!token) return false;
+  const ok = await activation.verify(ses, API_ORIGIN, token);
+  if (ok === false) { activation.clear(); return false; }
+  return true;
+}
+
+app.whenReady().then(async () => {
   Menu.setApplicationMenu(null);
 
   const ses = session.fromPartition(PARTITION);
@@ -225,10 +328,11 @@ app.whenReady().then(() => {
   installRequestHandler(ses);
 
   createSplash();
-  createMain();
-
   vcam.refreshInstalled();
   vcam.start();
+
+  activated = await checkActivation(ses);
+  createMain();
 });
 
 app.on('before-quit', () => vcam.stop());

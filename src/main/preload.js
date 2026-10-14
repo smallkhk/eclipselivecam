@@ -8,5 +8,5 @@ contextBridge.exposeInMainWorld('eclipseDesktop', {
   vcamInstall: () => ipcRenderer.invoke('vcam:install'),
   onVcamStatus: (cb) => ipcRenderer.on('vcam:status', (e, s) => cb(s)),
   version: () => ipcRenderer.invoke('app:version'),
-  openExternal: (url) => ipcRenderer.invoke('app:open-external', url),
+  activate: (deviceToken) => ipcRenderer.invoke('app:activate', deviceToken),
 });
