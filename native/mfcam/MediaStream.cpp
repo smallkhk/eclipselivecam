@@ -65,7 +65,9 @@ HRESULT MediaStream::Start(IMFMediaType* type)
 	// so we want to create a D2D1 renter target anyway
 	RETURN_IF_FAILED(_generator.EnsureRenderTarget(_width, _height));
 
-	RETURN_IF_FAILED(_allocator->InitializeSampleAllocator(10, type));
+	// Few buffers: every frame queued between us and the app is ~33 ms of
+	// extra delay in the call.
+	RETURN_IF_FAILED(_allocator->InitializeSampleAllocator(3, type));
 	RETURN_IF_FAILED(_queue->QueueEventParamVar(MEStreamStarted, GUID_NULL, S_OK, nullptr));
 	_state = MF_STREAM_STATE_RUNNING;
 	return S_OK;

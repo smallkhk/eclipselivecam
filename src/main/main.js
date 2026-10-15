@@ -346,5 +346,9 @@ app.whenReady().then(async () => {
   createMain();
 });
 
-app.on('before-quit', () => vcam.stop());
+app.on('before-quit', () => {
+  vcam.stop();
+  // Make sure the login cookie is on disk so the next launch stays signed in.
+  session.fromPartition(PARTITION).cookies.flushStore().catch(() => {});
+});
 app.on('window-all-closed', () => app.quit());
