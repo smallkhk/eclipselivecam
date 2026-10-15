@@ -9,7 +9,8 @@
 !include x64.nsh
 
 !define VCAM_CLSID "{4C23FA8E-932C-4342-92E8-7F3EDA72F4BA}"
-; DirectShow "Video Capture Sources" category.
+; DirectShow "Video Capture Sources" category. softcam registers the camera
+; there under its friendly name (Instance\EclipseLiveCam).
 !define VCAM_CATEGORY "{860BB310-5D01-11d0-BD3B-00A0C911CE86}"
 
 !macro customInstall
@@ -28,9 +29,9 @@
   nsExec::ExecToLog '"$WINDIR\SysWOW64\regsvr32.exe" /s /u "$INSTDIR\resources\vcam\x86\softcam.dll"'
   SetRegView 64
   DeleteRegKey HKCR "CLSID\${VCAM_CLSID}"
-  DeleteRegKey HKCR "CLSID\${VCAM_CATEGORY}\Instance\${VCAM_CLSID}"
+  DeleteRegKey HKCR "CLSID\${VCAM_CATEGORY}\Instance\EclipseLiveCam"
   SetRegView 32
   DeleteRegKey HKCR "CLSID\${VCAM_CLSID}"
-  DeleteRegKey HKCR "CLSID\${VCAM_CATEGORY}\Instance\${VCAM_CLSID}"
+  DeleteRegKey HKCR "CLSID\${VCAM_CATEGORY}\Instance\EclipseLiveCam"
   SetRegView lastused
 !macroend

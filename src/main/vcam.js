@@ -12,6 +12,10 @@ const fs = require('fs');
 
 // Must match native/patch-softcam.mjs and build/installer.nsh.
 const CAMERA_CLSID = '{4C23FA8E-932C-4342-92E8-7F3EDA72F4BA}';
+const CAMERA_NAME = 'EclipseLiveCam';
+// DirectShow "Video Capture Sources" category; softcam registers itself here
+// under its friendly name.
+const VIDEO_CAPTURE_CATEGORY = '{860BB310-5D01-11d0-BD3B-00A0C911CE86}';
 
 const WIDTH = 1280;
 const HEIGHT = 720;
@@ -48,14 +52,21 @@ function isSupported() {
   return process.platform === 'win32' || !!process.env.ECLIPSE_VCAM_HELPER;
 }
 
+const regKeyExists = (key) => new Promise((resolve) => {
+  execFile('reg', ['query', key], { windowsHide: true }, (err) => resolve(!err));
+});
+
 // Is the DirectShow filter registered, i.e. can other apps see the camera?
-function checkInstalled() {
-  if (process.env.ECLIPSE_VCAM_HELPER) return Promise.resolve(true);
-  if (process.platform !== 'win32') return Promise.resolve(false);
-  return new Promise((resolve) => {
-    execFile('reg', ['query', `HKCR\\CLSID\\${CAMERA_CLSID}\\InprocServer32`, '/ve'],
-      { windowsHide: true }, (err) => resolve(!err));
-  });
+// Two entries are needed: the COM class (so apps can load the DLL) and the
+// "Video Capture Sources" entry (so apps like OBS list it as a camera).
+async function checkInstalled() {
+  if (process.env.ECLIPSE_VCAM_HELPER) return true;
+  if (process.platform !== 'win32') return false;
+  const [comClass, deviceEntry] = await Promise.all([
+    regKeyExists(`HKCR\\CLSID\\${CAMERA_CLSID}\\InprocServer32`),
+    regKeyExists(`HKCR\\CLSID\\${VIDEO_CAPTURE_CATEGORY}\\Instance\\${CAMERA_NAME}`),
+  ]);
+  return comClass && deviceEntry;
 }
 
 async function refreshInstalled() {
