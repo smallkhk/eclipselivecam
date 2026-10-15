@@ -63,7 +63,7 @@ jobs:
             /I "%WindowsSdkDir%Include\%WindowsSDKVersion%cppwinrt" ^
             native\mfcam\*.cpp /LD /Fo:native\obj\ /Fe:native\out\x64\eclipse-mfcam.dll ^
             /link /DEF:native\mfcam\mfcam.def mfplat.lib mfuuid.lib mf.lib mfsensorgroup.lib ole32.lib oleaut32.lib ^
-            advapi32.lib propsys.lib windowsapp.lib d2d1.lib dwrite.lib d3d11.lib dxgi.lib windowscodecs.lib
+            advapi32.lib user32.lib propsys.lib windowsapp.lib d2d1.lib dwrite.lib d3d11.lib dxgi.lib windowscodecs.lib
           if errorlevel 1 exit /b 1
           del native\out\x64\eclipse-mfcam.exp native\out\x64\eclipse-mfcam.lib
           copy /y native\mfcam\LICENSE-VCamSample.txt native\out\VCamSample-LICENSE.txt
