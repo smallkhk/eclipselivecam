@@ -64,7 +64,12 @@ function renderCam(s) {
   if (s.state === 'unsupported') { text = 'Camera: Windows only'; desc = 'The virtual camera is available on Windows.'; }
   else if (s.state === 'error') { cls = 'err'; text = 'Camera error'; desc = `Could not start (${s.error || 'unknown'}).`; }
   else if (s.state === 'ready' && s.installed === false) { cls = 'err'; text = 'Camera not installed'; desc = 'Other apps can’t see it yet. Click Reinstall camera.'; }
-  else if (s.state === 'ready') { cls = 'on'; text = 'Camera on'; desc = 'Pick “EclipseLiveCam” as your camera in Zoom, Meet, Teams, Discord or OBS.'; }
+  else if (s.state === 'ready') {
+    cls = 'on'; text = 'Camera on';
+    desc = s.mode === 'mf'
+      ? 'Windows 11 camera: pick “EclipseLiveCam” in any app, including WhatsApp, Teams, Zoom, Chrome and OBS.'
+      : 'Pick “EclipseLiveCam” as your camera in Zoom, Meet, Chrome, Discord or OBS. (Microsoft Store apps such as WhatsApp need Windows 11.)';
+  }
   else { text = 'Camera starting…'; desc = 'Starting…'; }
   chip.className = 'tb-cam' + (cls ? ' ' + cls : '');
   $('tbCamText').textContent = text;

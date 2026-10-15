@@ -2,3 +2,5 @@ node_modules/
 dist/
 native/softcam/
 native/out/
+native/packages/
+native/obj/

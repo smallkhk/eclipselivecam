@@ -49,12 +49,31 @@ jobs:
         with:
           arch: x64
 
+      - name: Fetch Windows Implementation Library (for the Windows 11 camera)
+        run: nuget install Microsoft.Windows.ImplementationLibrary -Version 1.0.260126.7 -OutputDirectory native\packages
+
+      # Windows 11 camera: Media Foundation virtual camera source, based on
+      # smourier/VCamSample (MIT). C++/WinRT headers come with the Windows SDK.
+      - name: Build Windows 11 camera source
+        shell: cmd
+        run: |
+          mkdir native\out\x64 native\out\x86 native\obj
+          cl /nologo /std:c++20 /EHsc /O2 /MT /W3 /permissive- /DUNICODE /D_UNICODE /DNDEBUG ^
+            /I native\mfcam /I native\packages\Microsoft.Windows.ImplementationLibrary.1.0.260126.7\include ^
+            /I "%WindowsSdkDir%Include\%WindowsSDKVersion%cppwinrt" ^
+            native\mfcam\*.cpp /LD /Fo:native\obj\ /Fe:native\out\x64\eclipse-mfcam.dll ^
+            /link /DEF:native\mfcam\mfcam.def mfplat.lib mfuuid.lib mf.lib mfsensorgroup.lib ole32.lib oleaut32.lib ^
+            advapi32.lib propsys.lib windowsapp.lib d2d1.lib dwrite.lib d3d11.lib dxgi.lib windowscodecs.lib
+          if errorlevel 1 exit /b 1
+          del native\out\x64\eclipse-mfcam.exp native\out\x64\eclipse-mfcam.lib
+          copy /y native\mfcam\LICENSE-VCamSample.txt native\out\VCamSample-LICENSE.txt
+
       - name: Build frame helper
         shell: cmd
         run: |
-          mkdir native\out\x64 native\out\x86
-          cl /nologo /O2 /EHsc /MT /W4 native\eclipse-vcam.cpp /Fo:native\out\ /Fe:native\out\eclipse-vcam.exe
-          del native\out\*.obj
+          cl /nologo /O2 /EHsc /MT /W4 /I native native\eclipse-vcam.cpp /Fo:native\obj\ /Fe:native\out\eclipse-vcam.exe ^
+            /link mfplat.lib ole32.lib advapi32.lib
+          if errorlevel 1 exit /b 1
           copy /y native\softcam\dist\bin\x64\softcam.dll native\out\x64\
           copy /y native\softcam\dist\bin\Win32\softcam.dll native\out\x86\
           copy /y native\softcam\LICENSE native\out\softcam-LICENSE.txt

@@ -1,14 +1,17 @@
 // Virtual camera bridge (Windows only).
 //
-// The camera itself is softcam, a DirectShow filter DLL rebranded as
-// "EclipseLiveCam" (see native/). The installer registers it once so Zoom,
-// Meet, Discord, OBS etc. list it as a webcam. While the app runs, a small
-// helper process (eclipse-vcam.exe) owns the camera and we stream raw RGBA
-// frames to its stdin.
+// Two camera back-ends, both named "EclipseLiveCam" (see native/):
+//   Windows 11: a Media Foundation virtual camera (native/mfcam). Every app
+//     sees it, including Microsoft Store apps like WhatsApp.
+//   Windows 10: softcam, a DirectShow camera (Chrome, Zoom, OBS, Discord …).
+// The installer registers the one that fits the PC. While the app runs, a
+// small helper process (eclipse-vcam.exe) owns the camera and we stream raw
+// RGBA frames to its stdin.
 const { app } = require('electron');
 const { spawn, execFile } = require('child_process');
 const path = require('path');
 const fs = require('fs');
+const os = require('os');
 
 // Must match native/patch-softcam.mjs and build/installer.nsh.
 const CAMERA_CLSID = '{4C23FA8E-932C-4342-92E8-7F3EDA72F4BA}';
@@ -16,6 +19,11 @@ const CAMERA_NAME = 'EclipseLiveCam';
 // DirectShow "Video Capture Sources" category; softcam registers itself here
 // under its friendly name.
 const VIDEO_CAPTURE_CATEGORY = '{860BB310-5D01-11d0-BD3B-00A0C911CE86}';
+// Must match CLSID_VCam in native/mfcam/dllmain.cpp and build/installer.nsh.
+const MF_SOURCE_CLSID = '{FA23E0B3-62C2-4B9E-BA5C-A322F9D0CFE9}';
+
+// Windows 11 is build 22000 and later (os.release() is "10.0.<build>").
+const isWindows11 = () => process.platform === 'win32' && Number(os.release().split('.')[2]) >= 22000;
 
 const WIDTH = 1280;
 const HEIGHT = 720;
@@ -29,10 +37,12 @@ function vcamDir() {
 }
 const helperPath = () => process.env.ECLIPSE_VCAM_HELPER || path.join(vcamDir(), 'eclipse-vcam.exe');
 const dllPath = (arch = 'x64') => path.join(vcamDir(), arch, 'softcam.dll');
+const mfDllPath = () => path.join(vcamDir(), 'x64', 'eclipse-mfcam.dll');
 
 let proc = null;
 let state = 'off';        // off | starting | ready | error | unsupported
 let errorReason = '';
+let mode = null;          // 'mf' (Windows 11 camera) | 'ds' (DirectShow) once running
 let installed = null;     // null = unknown
 let dropped = 0;
 let listeners = [];
@@ -43,7 +53,7 @@ function emit() {
 }
 
 function status() {
-  return { state, error: errorReason, installed, width: WIDTH, height: HEIGHT, fps: FPS, name: 'EclipseLiveCam' };
+  return { state, error: errorReason, installed, mode, width: WIDTH, height: HEIGHT, fps: FPS, name: 'EclipseLiveCam' };
 }
 
 function onStatus(fn) { listeners.push(fn); }
@@ -56,12 +66,17 @@ const regKeyExists = (key) => new Promise((resolve) => {
   execFile('reg', ['query', key], { windowsHide: true }, (err) => resolve(!err));
 });
 
-// Is the DirectShow filter registered, i.e. can other apps see the camera?
-// Two entries are needed: the COM class (so apps can load the DLL) and the
-// "Video Capture Sources" entry (so apps like OBS list it as a camera).
+// Is the camera registered, i.e. can other apps see it?
+// Windows 11: the Media Foundation source must be registered in HKLM.
+// Windows 10: the DirectShow filter needs two entries: the COM class (so apps
+// can load the DLL) and the "Video Capture Sources" entry (so apps like OBS
+// list it as a camera).
 async function checkInstalled() {
   if (process.env.ECLIPSE_VCAM_HELPER) return true;
   if (process.platform !== 'win32') return false;
+  if (isWindows11()) {
+    return regKeyExists(`HKLM\\SOFTWARE\\Classes\\CLSID\\${MF_SOURCE_CLSID}\\InprocServer32`);
+  }
   const [comClass, deviceEntry] = await Promise.all([
     regKeyExists(`HKCR\\CLSID\\${CAMERA_CLSID}\\InprocServer32`),
     regKeyExists(`HKCR\\CLSID\\${VIDEO_CAPTURE_CATEGORY}\\Instance\\${CAMERA_NAME}`),
@@ -82,9 +97,19 @@ function install() {
   const regsvr = path.join(process.env.WINDIR || 'C:\\Windows', 'System32', 'regsvr32.exe');
   const regsvr32bit = path.join(process.env.WINDIR || 'C:\\Windows', 'SysWOW64', 'regsvr32.exe');
   const q = (s) => `'${s.replace(/'/g, "''")}'`;
-  const cmds = [`Start-Process -FilePath ${q(regsvr)} -ArgumentList '/s',${q('"' + dllPath('x64') + '"')} -Verb RunAs -Wait`];
-  if (fs.existsSync(dllPath('x86')) && fs.existsSync(regsvr32bit)) {
-    cmds.push(`Start-Process -FilePath ${q(regsvr32bit)} -ArgumentList '/s',${q('"' + dllPath('x86') + '"')} -Verb RunAs -Wait`);
+  const run = (exe, args) => `Start-Process -FilePath ${q(exe)} -ArgumentList ${args.map(q).join(',')} -Verb RunAs -Wait`;
+  const cmds = [];
+  if (isWindows11()) {
+    // One camera that every app sees; remove the DirectShow one so apps
+    // don't list "EclipseLiveCam" twice.
+    cmds.push(run(regsvr, ['/s', `"${mfDllPath()}"`]));
+    cmds.push(run(regsvr, ['/s', '/u', `"${dllPath('x64')}"`]));
+    if (fs.existsSync(regsvr32bit)) cmds.push(run(regsvr32bit, ['/s', '/u', `"${dllPath('x86')}"`]));
+  } else {
+    cmds.push(run(regsvr, ['/s', `"${dllPath('x64')}"`]));
+    if (fs.existsSync(dllPath('x86')) && fs.existsSync(regsvr32bit)) {
+      cmds.push(run(regsvr32bit, ['/s', `"${dllPath('x86')}"`]));
+    }
   }
   return new Promise((resolve) => {
     execFile('powershell.exe', ['-NoProfile', '-NonInteractive', '-Command', cmds.join('; ')],
@@ -112,7 +137,7 @@ function start() {
     while ((nl = out.indexOf('\n')) >= 0) {
       const line = out.slice(0, nl).trim();
       out = out.slice(nl + 1);
-      if (line === 'READY') { state = 'ready'; emit(); }
+      if (line.startsWith('READY')) { state = 'ready'; mode = line.split(' ')[1] || null; emit(); }
       else if (line.startsWith('ERROR')) { state = 'error'; errorReason = line.slice(6); emit(); }
     }
   });

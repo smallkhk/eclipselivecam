@@ -12,18 +12,25 @@ Google Meet, Teams, Discord, OBS and so on. You don't need OBS.
   still go to `https://eclipselivecam.online/api/…` on your cPanel server, because
   that's where the Decart API key and customer balances live. Keep the `api/`
   and `data/` folders on the server. You can remove the website pages if you like.
-- **Virtual camera.** The camera is [softcam](https://github.com/tshino/softcam)
-  (MIT licence), a DirectShow camera driver renamed to "EclipseLiveCam". The
-  installer registers it once. While the app runs, a small helper
-  (`eclipse-vcam.exe`) receives the AI output frames and shows them in the
-  camera. When nothing is streaming, the camera shows a standby screen, so it
+- **Virtual camera.** "EclipseLiveCam" comes in two versions, and the
+  installer registers the one that fits the PC:
+  - **Windows 11:** a Media Foundation virtual camera (`native/mfcam`, based on
+    [VCamSample](https://github.com/smourier/VCamSample), MIT). *Every* app sees
+    it, including Microsoft Store apps like WhatsApp and the Windows Camera app.
+  - **Windows 10:** [softcam](https://github.com/tshino/softcam) (MIT), a
+    DirectShow camera seen by Chrome, Zoom, OBS, Discord and so on, but not by
+    Store apps.
+
+  While the app runs, a small helper (`eclipse-vcam.exe`) receives the AI
+  output frames and shows them in the camera. When nothing is streaming, the camera shows a standby screen, so it
   can stay selected in Zoom between sessions.
 
 ```
 Studio (AI output video)
    │  each frame, letterboxed to 1280×720
    ▼
-Electron main process ──stdin──► eclipse-vcam.exe ──► softcam.dll ──► "EclipseLiveCam" in Zoom / Meet / Discord / OBS
+Electron main process ──stdin──► eclipse-vcam.exe ─┬─► shared memory ──► eclipse-mfcam.dll (Windows 11, every app)
+                                                  └─► softcam.dll (Windows 10, DirectShow apps)
 ```
 
 - **Activation keys.** On first launch the app asks for an `ECLPS-XXXXX-XXXXX-XXXXX`
@@ -38,9 +45,9 @@ Electron main process ──stdin──► eclipse-vcam.exe ──► softcam.dl
 
 Notes:
 - The camera is video only. People keep their normal microphone in the call app.
-- Most apps see DirectShow cameras (Zoom, Teams, Discord, OBS, Chrome/Edge/Meet).
-  A few apps that only support newer Windows 11 cameras, such as the built-in
-  Windows Camera app, may not list it.
+- On Windows 10, Microsoft Store apps (WhatsApp desktop, the Windows Camera
+  app) can't see the camera; Windows 10 has no way for an app to add a camera
+  for them. WhatsApp Web in Chrome works.
 
 ## Building the installer
 
@@ -63,7 +70,8 @@ src/main/preload.js    bridge the pages use to reach the camera
 src/main/splash.html   startup splash
 src/web/               the app's pages (copied from the website)
 src/web/assets/js/desktop.js   captures the AI output and feeds the camera
-native/eclipse-vcam.cpp        helper: stdin RGBA frames → softcam
+native/eclipse-vcam.cpp        helper: stdin RGBA frames → Windows 11 camera or softcam
+native/mfcam/                  Windows 11 Media Foundation camera source (from VCamSample)
 native/patch-softcam.mjs       renames softcam to "EclipseLiveCam" before building
 build/installer.nsh    registers / removes the camera on install / uninstall
 ```
