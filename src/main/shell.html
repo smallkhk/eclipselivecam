@@ -22,6 +22,8 @@ html,body{height:100%;background:#0c0c0e;color:#e8e8f0;font-family:'Segoe UI',sy
 .tb-cam .dot{width:7px;height:7px;border-radius:50%;background:rgba(232,232,240,.25)}
 .tb-cam.on .dot{background:#34d399;box-shadow:0 0 0 3px rgba(52,211,153,.15)}
 .tb-cam.err .dot{background:#f87171}
+.tb-update{-webkit-app-region:no-drag;margin-right:12px;border:none;border-radius:6px;padding:4px 10px;font:600 .72rem 'Segoe UI',system-ui,sans-serif;color:#fff;background:linear-gradient(135deg,#7c3aed,#a855f7);cursor:pointer}
+.tb-update[hidden]{display:none}
 .tb-controls{display:flex;-webkit-app-region:no-drag;height:100%}
 .tb-ctrl{width:46px;height:100%;display:flex;align-items:center;justify-content:center;cursor:pointer;color:rgba(232,232,240,.5);transition:background .15s;border:none;background:none;font:inherit}
 .tb-ctrl:hover{background:rgba(255,255,255,.08);color:rgba(232,232,240,.9)}
@@ -66,6 +68,7 @@ body.show-settings .settings{display:block}
 <div class="titlebar">
   <div class="tb-icon"><div class="ico"></div></div>
   <div class="tb-title">EclipseLiveCam</div>
+  <button class="tb-update" id="tbUpdate" hidden title="A new version is ready">⬆ Restart to update</button>
   <div class="tb-cam" id="tbCam" title="EclipseLiveCam virtual camera"><span class="dot"></span><span id="tbCamText">Camera</span></div>
   <div class="tb-controls">
     <button class="tb-ctrl gear" id="btnSettings" title="Settings">
@@ -113,6 +116,10 @@ body.show-settings .settings{display:block}
 
     <div class="group">
       <div class="group-h">App</div>
+      <div class="row">
+        <div class="row-l"><div class="label">Updates</div><div class="desc" id="updDesc">—</div></div>
+        <button class="btn" id="btnUpdate">Check for updates</button>
+      </div>
       <div class="row">
         <div class="row-l"><div class="label">Reload</div><div class="desc">Refresh the current page</div></div>
         <button class="btn" id="btnReload">↺ Reload</button>

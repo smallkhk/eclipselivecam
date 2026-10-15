@@ -19,6 +19,7 @@ const path = require('path');
 const fs = require('fs');
 const vcam = require('./vcam');
 const activation = require('./activation');
+const updater = require('./updater');
 
 const SITE_HOST = 'eclipselivecam.online';
 const SITE_ORIGIN = `https://${SITE_HOST}`;
@@ -158,6 +159,7 @@ ipcMain.handle('shell:info', () => ({
   maximized: !!mainWindow?.isMaximized(),
   activated,
   camera: vcam.status(),
+  update: updater.status(),
 }));
 ipcMain.handle('shell:minimize', () => mainWindow?.minimize());
 ipcMain.handle('shell:toggle-maximize', () => {
@@ -180,6 +182,12 @@ ipcMain.handle('shell:set-setting', (e, key, value) => {
 });
 
 const clampZoom = (z) => Math.min(150, Math.max(70, Number(z) || 100));
+
+ipcMain.handle('update:check', () => updater.check());
+ipcMain.handle('update:install', () => updater.installNow());
+updater.onStatus((s) => {
+  if (mainWindow && !mainWindow.isDestroyed()) mainWindow.webContents.send('update:status', s);
+});
 
 vcam.onStatus((s) => {
   for (const wc of [mainWindow?.webContents, contentView?.webContents]) {
@@ -329,6 +337,7 @@ app.whenReady().then(async () => {
 
   createSplash();
   vcam.refreshInstalled();
+  updater.init();
   vcam.start();
 
   activated = await checkActivation(ses);

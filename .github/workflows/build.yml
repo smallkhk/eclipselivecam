@@ -63,6 +63,14 @@ jobs:
       - name: Install dependencies
         run: npm ci
 
+      # Each build gets its own version (2.0.<run number>) so the app's
+      # auto-updater can tell a newer release from the one installed.
+      - name: Set build version
+        shell: bash
+        run: |
+          base=$(node -p "require('./package.json').version.split('.').slice(0,2).join('.')")
+          npm version "${base}.${{ github.run_number }}" --no-git-tag-version --allow-same-version
+
       - name: Build installer
         run: npm run build
 
@@ -73,16 +81,17 @@ jobs:
           retention-days: 30
 
       # Every build pushed to a branch becomes a GitHub Release with the
-      # installer attached. Builds from main are the "Latest" release; builds
-      # from other branches are marked as pre-releases (test builds).
+      # installer attached. Builds from main are the "Latest" release, which
+      # installed apps auto-update to; builds from other branches are marked
+      # as pre-releases (test builds) and are never offered as updates.
       - name: Release tag
         if: github.event_name != 'pull_request'
         id: tag
         shell: bash
         run: |
           version=$(node -p "require('./package.json').version")
-          echo "tag=v${version}-build.${{ github.run_number }}" >> "$GITHUB_OUTPUT"
-          echo "name=EclipseLiveCam ${version} (build ${{ github.run_number }})" >> "$GITHUB_OUTPUT"
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "name=EclipseLiveCam ${version}" >> "$GITHUB_OUTPUT"
 
       - name: Publish release
         if: github.event_name != 'pull_request'
@@ -94,7 +103,11 @@ jobs:
           prerelease: ${{ github.ref != 'refs/heads/main' }}
           make_latest: ${{ github.ref == 'refs/heads/main' }}
           fail_on_unmatched_files: true
-          files: dist/*.exe
+          # latest.yml + .blockmap are what installed apps read to auto-update.
+          files: |
+            dist/*.exe
+            dist/*.exe.blockmap
+            dist/latest.yml
           body: |
             Windows installer for EclipseLiveCam with the built-in virtual camera.
 

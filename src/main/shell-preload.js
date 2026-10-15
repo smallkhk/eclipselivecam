@@ -14,4 +14,7 @@ contextBridge.exposeInMainWorld('shell', {
   onMaximized: (cb) => ipcRenderer.on('shell:maximized', (e, v) => cb(v)),
   onSettingsVisible: (cb) => ipcRenderer.on('shell:settings-visible', (e, v) => cb(v)),
   onCameraStatus: (cb) => ipcRenderer.on('vcam:status', (e, s) => cb(s)),
+  checkForUpdates: () => ipcRenderer.invoke('update:check'),
+  installUpdate: () => ipcRenderer.invoke('update:install'),
+  onUpdateStatus: (cb) => ipcRenderer.on('update:status', (e, s) => cb(s)),
 });

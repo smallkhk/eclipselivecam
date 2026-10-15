@@ -28,11 +28,21 @@
       }
     ],
     "artifactName": "EclipseLiveCam-Setup-${version}.${ext}",
+    "publish": [
+      {
+        "provider": "github",
+        "owner": "smallkhk",
+        "repo": "eclipselivecam",
+        "releaseType": "release"
+      }
+    ],
     "win": {
       "target": [
         {
           "target": "nsis",
-          "arch": ["x64"]
+          "arch": [
+            "x64"
+          ]
         }
       ],
       "icon": "assets/icon.ico"
@@ -53,5 +63,8 @@
   "devDependencies": {
     "electron": "41.10.7",
     "electron-builder": "26.15.3"
+  },
+  "dependencies": {
+    "electron-updater": "6.8.9"
   }
 }

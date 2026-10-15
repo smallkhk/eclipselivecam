@@ -78,6 +78,31 @@ async function refreshActivation() {
   $('actDesc').textContent = info.activated ? 'This device is activated.' : 'Not activated yet.';
 }
 
+// ── Updates ─────────────────────────────────────────────────────────────────
+function renderUpdate(u) {
+  const ready = u.state === 'ready';
+  $('tbUpdate').hidden = !ready;
+  $('tbUpdate').textContent = `⬆ Restart to update${u.version ? ' to ' + u.version : ''}`;
+  const desc = {
+    disabled: 'Updates are only checked in the installed app.',
+    idle: 'Not checked yet.',
+    checking: 'Checking for updates…',
+    current: 'You have the latest version.',
+    downloading: `Downloading version ${u.version}…`,
+    ready: `Version ${u.version} is ready. Restart to install it.`,
+    error: 'Could not check for updates. It will try again later.',
+  }[u.state] || '';
+  $('updDesc').textContent = desc;
+  $('btnUpdate').textContent = ready ? 'Restart and update' : 'Check for updates';
+  $('btnUpdate').disabled = ['disabled', 'checking', 'downloading'].includes(u.state);
+}
+$('tbUpdate').addEventListener('click', () => api.installUpdate());
+$('btnUpdate').addEventListener('click', () => {
+  if ($('btnUpdate').textContent === 'Restart and update') api.installUpdate();
+  else api.checkForUpdates();
+});
+api.onUpdateStatus(renderUpdate);
+
 // ── Initial state ────────────────────────────────────────────────────────────
 (async function init() {
   const info = await api.info();
@@ -90,4 +115,5 @@ async function refreshActivation() {
   $('actDesc').textContent = info.activated ? 'This device is activated.' : 'Not activated yet.';
   setMaxIcon(info.maximized);
   renderCam(info.camera);
+  renderUpdate(info.update);
 })();
