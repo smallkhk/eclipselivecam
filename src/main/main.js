@@ -138,7 +138,7 @@ function isAppUrl(u) {
 // ── IPC: app pages ───────────────────────────────────────────────────────────
 ipcMain.on('vcam:frame', (e, data) => vcam.frame(data));
 ipcMain.handle('vcam:status', () => vcam.status());
-ipcMain.handle('vcam:install', async () => { await vcam.install(); vcam.stop(); vcam.start(); return vcam.status(); });
+ipcMain.handle('vcam:install', async () => { await vcam.install(); await vcam.restart(); return vcam.status(); });
 ipcMain.handle('app:version', () => app.getVersion());
 
 // The activation page hands over the device token it just received. We check
@@ -175,10 +175,11 @@ ipcMain.handle('shell:clear-cache', async () => {
   return true;
 });
 ipcMain.handle('shell:set-setting', (e, key, value) => {
-  if (!['zoom', 'startMaximized', 'alwaysOnTop'].includes(key)) return;
+  if (!['zoom', 'startMaximized', 'alwaysOnTop', 'cameraOrientation'].includes(key)) return;
   saveSettings({ ...loadSettings(), [key]: value });
   if (key === 'zoom') contentView?.webContents.setZoomFactor(clampZoom(value) / 100);
   if (key === 'alwaysOnTop') mainWindow?.setAlwaysOnTop(!!value);
+  if (key === 'cameraOrientation') return vcam.setOrientation(value);
 });
 
 const clampZoom = (z) => Math.min(150, Math.max(70, Number(z) || 100));
@@ -338,6 +339,7 @@ app.whenReady().then(async () => {
   createSplash();
   vcam.refreshInstalled();
   updater.init();
+  await vcam.setOrientation(loadSettings().cameraOrientation || 'portrait');
   vcam.start();
 
   activated = await checkActivation(ses);

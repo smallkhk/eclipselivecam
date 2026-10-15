@@ -20,43 +20,26 @@ HRESULT MediaStream::Initialize(IMFMediaSource* source, int index)
 
 	RETURN_IF_FAILED(MFCreateEventQueue(&_queue));
 
-	// set 1 here to force RGB32 only
-	auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(2);
+	// One format only: YUY2, the classic webcam format every app reads the
+	// same way. (Offering NV12 as well led to some apps, e.g. WhatsApp calls,
+	// receiving NV12 bytes they decoded as YUY2: a green, doubled picture.)
+	EclipseCameraSize(&_width, &_height);
+	auto types = wil::make_unique_cotaskmem_array<wil::com_ptr_nothrow<IMFMediaType>>(1);
 
-#define NUM_IMAGE_COLS ECLIPSE_FRAME_WIDTH
-#define NUM_IMAGE_ROWS ECLIPSE_FRAME_HEIGHT
-
-	wil::com_ptr_nothrow<IMFMediaType> rgbType;
-	RETURN_IF_FAILED(MFCreateMediaType(&rgbType));
-	rgbType->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-	rgbType->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_RGB32);
-	MFSetAttributeSize(rgbType.get(), MF_MT_FRAME_SIZE, NUM_IMAGE_COLS, NUM_IMAGE_ROWS);
-	rgbType->SetUINT32(MF_MT_DEFAULT_STRIDE, NUM_IMAGE_COLS * 4);
-	rgbType->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-	rgbType->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-	MFSetAttributeRatio(rgbType.get(), MF_MT_FRAME_RATE, 30, 1);
-	auto bitrate = (uint32_t)(NUM_IMAGE_COLS * NUM_IMAGE_ROWS * 4 * 8 * 30);
-	rgbType->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
-	MFSetAttributeRatio(rgbType.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-	types[0] = rgbType.detach();
-
-	if (types.size() > 1)
-	{
-		wil::com_ptr_nothrow<IMFMediaType> nv12Type;
-		RETURN_IF_FAILED(MFCreateMediaType(&nv12Type));
-		nv12Type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
-		nv12Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_NV12);
-		nv12Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
-		nv12Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
-		MFSetAttributeSize(nv12Type.get(), MF_MT_FRAME_SIZE, NUM_IMAGE_COLS, NUM_IMAGE_ROWS);
-		nv12Type->SetUINT32(MF_MT_DEFAULT_STRIDE, NUM_IMAGE_COLS);
-		MFSetAttributeRatio(nv12Type.get(), MF_MT_FRAME_RATE, 30, 1);
-		// frame size * pixel bit size * framerate
-		bitrate = (uint32_t)(NUM_IMAGE_COLS * 1.5 * NUM_IMAGE_ROWS * 8 * 30);
-		nv12Type->SetUINT32(MF_MT_AVG_BITRATE, bitrate);
-		MFSetAttributeRatio(nv12Type.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
-		types[1] = nv12Type.detach();
-	}
+	wil::com_ptr_nothrow<IMFMediaType> yuy2Type;
+	RETURN_IF_FAILED(MFCreateMediaType(&yuy2Type));
+	yuy2Type->SetGUID(MF_MT_MAJOR_TYPE, MFMediaType_Video);
+	yuy2Type->SetGUID(MF_MT_SUBTYPE, MFVideoFormat_YUY2);
+	MFSetAttributeSize(yuy2Type.get(), MF_MT_FRAME_SIZE, _width, _height);
+	yuy2Type->SetUINT32(MF_MT_DEFAULT_STRIDE, _width * 2);
+	yuy2Type->SetUINT32(MF_MT_FIXED_SIZE_SAMPLES, TRUE);
+	yuy2Type->SetUINT32(MF_MT_SAMPLE_SIZE, _width * _height * 2);
+	yuy2Type->SetUINT32(MF_MT_INTERLACE_MODE, MFVideoInterlace_Progressive);
+	yuy2Type->SetUINT32(MF_MT_ALL_SAMPLES_INDEPENDENT, TRUE);
+	MFSetAttributeRatio(yuy2Type.get(), MF_MT_FRAME_RATE, 30, 1);
+	yuy2Type->SetUINT32(MF_MT_AVG_BITRATE, _width * _height * 2 * 8 * 30);
+	MFSetAttributeRatio(yuy2Type.get(), MF_MT_PIXEL_ASPECT_RATIO, 1, 1);
+	types[0] = yuy2Type.detach();
 
 	RETURN_IF_FAILED_MSG(MFCreateStreamDescriptor(_index, (DWORD)types.size(), types.get(), &_descriptor), "MFCreateStreamDescriptor failed");
 
@@ -80,7 +63,7 @@ HRESULT MediaStream::Start(IMFMediaType* type)
 
 	// at this point, set D3D manager may have not been called
 	// so we want to create a D2D1 renter target anyway
-	RETURN_IF_FAILED(_generator.EnsureRenderTarget(NUM_IMAGE_COLS, NUM_IMAGE_ROWS));
+	RETURN_IF_FAILED(_generator.EnsureRenderTarget(_width, _height));
 
 	RETURN_IF_FAILED(_allocator->InitializeSampleAllocator(10, type));
 	RETURN_IF_FAILED(_queue->QueueEventParamVar(MEStreamStarted, GUID_NULL, S_OK, nullptr));

@@ -115,7 +115,26 @@ HRESULT FrameGenerator::Generate(IMFSample* sample, REFGUID format, IMFSample** 
 
 	HRESULT hr = S_OK;
 	const LONG srcStride = (LONG)_width * 4;
-	if (format == MFVideoFormat_NV12)
+	if (format == MFVideoFormat_YUY2)
+	{
+		// BGRA -> YUY2 (BT.601, video range): Y0 U Y1 V per pixel pair.
+		for (UINT y = 0; y < _height; y++)
+		{
+			const BYTE* s = _pixels.data() + (size_t)srcStride * y;
+			BYTE* d = scanline + (LONG_PTR)pitch * y;
+			for (UINT x = 0; x + 1 < _width; x += 2, s += 8, d += 4)
+			{
+				int b0 = s[0], g0 = s[1], r0 = s[2];
+				int b1 = s[4], g1 = s[5], r1 = s[6];
+				int r = (r0 + r1) >> 1, g = (g0 + g1) >> 1, b = (b0 + b1) >> 1;
+				d[0] = (BYTE)(((66 * r0 + 129 * g0 + 25 * b0 + 128) >> 8) + 16);
+				d[1] = (BYTE)(((-38 * r - 74 * g + 112 * b + 128) >> 8) + 128);
+				d[2] = (BYTE)(((66 * r1 + 129 * g1 + 25 * b1 + 128) >> 8) + 16);
+				d[3] = (BYTE)(((112 * r - 94 * g - 18 * b + 128) >> 8) + 128);
+			}
+		}
+	}
+	else if (format == MFVideoFormat_NV12)
 	{
 		hr = RGB32ToNV12(_pixels.data(), (ULONG)_pixels.size(), srcStride, _width, _height, scanline, length, pitch);
 	}

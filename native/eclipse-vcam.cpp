@@ -78,7 +78,8 @@ static bool mfSourceRegistered()
 // ── Windows 11: Media Foundation virtual camera ─────────────────────────────
 static int runMediaFoundation(int width, int height)
 {
-	if (width != ECLIPSE_FRAME_WIDTH || height != ECLIPSE_FRAME_HEIGHT) return -1;
+	// Must fit the shared memory, sized for 1280x720 / 720x1280.
+	if ((size_t)width * height > ECLIPSE_FRAME_MAX_PIXELS) return -1;
 
 	// Loaded at runtime so the helper still starts on Windows 10.
 	HMODULE sensorGroup = LoadLibraryW(L"mfsensorgroup.dll");

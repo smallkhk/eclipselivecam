@@ -25,10 +25,22 @@ const MF_SOURCE_CLSID = '{FA23E0B3-62C2-4B9E-BA5C-A322F9D0CFE9}';
 // Windows 11 is build 22000 and later (os.release() is "10.0.<build>").
 const isWindows11 = () => process.platform === 'win32' && Number(os.release().split('.')[2]) >= 22000;
 
-const WIDTH = 1280;
-const HEIGHT = 720;
+// Portrait (720x1280, like a phone video) or landscape (1280x720).
+const SIZES = { portrait: [720, 1280], landscape: [1280, 720] };
 const FPS = 30;
-const FRAME_BYTES = WIDTH * HEIGHT * 4;
+let orientation = 'portrait';
+const size = () => SIZES[orientation];
+
+// The Windows 11 camera runs inside a Windows service, so it reads the
+// orientation from this file (see native/mfcam/SharedFrame.h).
+const configFile = () => path.join(process.env.ProgramData || 'C:\\ProgramData', 'EclipseLiveCam', 'camera.cfg');
+function writeConfig() {
+  if (process.platform !== 'win32') return;
+  try {
+    fs.mkdirSync(path.dirname(configFile()), { recursive: true });
+    fs.writeFileSync(configFile(), orientation);
+  } catch {}
+}
 
 function vcamDir() {
   return app.isPackaged
@@ -53,7 +65,8 @@ function emit() {
 }
 
 function status() {
-  return { state, error: errorReason, installed, mode, width: WIDTH, height: HEIGHT, fps: FPS, name: 'EclipseLiveCam' };
+  const [width, height] = size();
+  return { state, error: errorReason, installed, mode, orientation, width, height, fps: FPS, name: 'EclipseLiveCam' };
 }
 
 function onStatus(fn) { listeners.push(fn); }
@@ -126,7 +139,9 @@ function start() {
   }
 
   state = 'starting'; errorReason = ''; emit();
-  const args = [dllPath('x64'), String(WIDTH), String(HEIGHT), String(FPS)];
+  writeConfig();
+  const [width, height] = size();
+  const args = [dllPath('x64'), String(width), String(height), String(FPS)];
   const child = spawn(helperPath(), args, { windowsHide: true, stdio: ['pipe', 'pipe', 'ignore'] });
   proc = child;
 
@@ -157,19 +172,40 @@ function start() {
 // queued when the helper falls behind, so the camera never lags behind live.
 function frame(data) {
   if (!proc || state !== 'ready') return;
-  if (data.byteLength !== FRAME_BYTES) return;
+  const [width, height] = size();
+  if (data.byteLength !== width * height * 4) return;
   if (proc.stdin.writableNeedDrain) { dropped++; return; }
   proc.stdin.write(Buffer.from(data.buffer, data.byteOffset, data.byteLength));
 }
 
+// Resolves once the helper has exited, so a restart never overlaps the old
+// camera (two cameras with one name would clash).
 function stop() {
   const child = proc;
   proc = null;
-  if (!child) return;
+  if (!child) return Promise.resolve();
+  const exited = new Promise((resolve) => {
+    if (child.exitCode !== null) resolve(); else child.once('exit', resolve);
+  });
   try { child.stdin.end(); } catch {}
   // The helper exits on stdin EOF; make sure it does.
-  setTimeout(() => { try { child.kill(); } catch {} }, 2000);
+  const timer = setTimeout(() => { try { child.kill(); } catch {} }, 2000);
+  exited.then(() => clearTimeout(timer));
   state = 'off'; emit();
+  return exited;
 }
 
-module.exports = { start, stop, frame, status, onStatus, install, refreshInstalled, isSupported, WIDTH, HEIGHT, FPS };
+async function restart() {
+  await stop();
+  start();
+}
+
+// Apps pick up the new shape the next time they open the camera.
+async function setOrientation(value) {
+  if (!SIZES[value] || value === orientation) return status();
+  orientation = value;
+  if (proc) await restart(); else emit();
+  return status();
+}
+
+module.exports = { start, stop, restart, frame, status, onStatus, install, refreshInstalled, isSupported, setOrientation, FPS };

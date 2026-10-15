@@ -1,8 +1,9 @@
 /* ── EclipseLiveCam desktop — virtual camera feed ───────────────────────────
  * Only active inside the desktop app (window.eclipseDesktop comes from its
  * preload script). Takes the live AI output the Studio publishes on
- * window.__eclipseStream, fits it into a fixed 1280×720 frame and sends each
- * frame to the app, which pushes it into the "EclipseLiveCam" camera.
+ * window.__eclipseStream, fills the camera frame with it (portrait 720×1280 or
+ * landscape 1280×720, centre-cropped) and sends each frame to the app, which
+ * pushes it into the "EclipseLiveCam" camera.
  * When nothing is streaming the camera shows a branded standby card, so it can
  * stay selected in Zoom/Meet between sessions.
  */
@@ -10,8 +11,9 @@
   const D = window.eclipseDesktop;
   if (!D) return;
 
-  const W = 1280, H = 720, FPS = 30;
+  const FPS = 30;
   const FRAME_MS = 1000 / FPS;
+  let W = 720, H = 1280;   // replaced by the camera's real size from the app
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -27,13 +29,23 @@
     D.vcamFrame(ctx.getImageData(0, 0, W, H).data);
   }
 
-  function drawFit(src, sw, sh) {
+  // Fill the whole camera frame, cropping the edges that don't fit. The AI
+  // output is landscape, so a portrait camera keeps the centre (the person).
+  function drawCover(src, sw, sh) {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     if (!sw || !sh) return;
-    const scale = Math.min(W / sw, H / sh);
+    const scale = Math.max(W / sw, H / sh);
     const dw = Math.round(sw * scale), dh = Math.round(sh * scale);
     ctx.drawImage(src, (W - dw) >> 1, (H - dh) >> 1, dw, dh);
+  }
+
+  function resize(w, h) {
+    if (!w || !h || (w === W && h === H)) return;
+    W = w; H = h;
+    canvas.width = W;
+    canvas.height = H;
+    if (!current) drawStandby();
   }
 
   function drawStandby() {
@@ -73,7 +85,7 @@
         if (done) break;
         const now = performance.now();
         if (token === feedToken && now - lastSent >= FRAME_MS - 2) {
-          drawFit(frame, frame.displayWidth, frame.displayHeight);
+          drawCover(frame, frame.displayWidth, frame.displayHeight);
           send();
           lastSent = now;
         }
@@ -94,7 +106,7 @@
     v.play().catch(() => {});
     const timer = setInterval(() => {
       if (token !== feedToken) { clearInterval(timer); v.srcObject = null; return; }
-      if (v.readyState >= 2) { drawFit(v, v.videoWidth, v.videoHeight); send(); }
+      if (v.readyState >= 2) { drawCover(v, v.videoWidth, v.videoHeight); send(); }
     }, FRAME_MS);
   }
 
@@ -129,6 +141,7 @@
   };
 
   function render(s) {
+    resize(s.width, s.height);
     camReady = s.state === 'ready';
     if (camReady && !current) { drawStandby(); send(); }
     if (!chip) return;

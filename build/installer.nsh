@@ -36,6 +36,12 @@
 !macroend
 
 !macro customInstall
+  ; Camera settings (orientation) written by the app, read by the Windows 11
+  ; camera inside the Frame Server service. Any signed-in user may change it.
+  ExpandEnvStrings $1 "%ProgramData%\EclipseLiveCam"
+  CreateDirectory "$1"
+  nsExec::Exec 'icacls "$1" /grant *S-1-5-11:(OI)(CI)M'
+
   ReadRegStr $0 HKLM "SOFTWARE\Microsoft\Windows NT\CurrentVersion" "CurrentBuildNumber"
   ${DisableX64FSRedirection}
   ${If} $0 >= 22000

@@ -27,7 +27,9 @@ public:
 	MediaStream() :
 		_index(0),
 		_state(MF_STREAM_STATE_STOPPED),
-		_format(GUID_NULL)
+		_format(MFVideoFormat_YUY2),
+		_width(0),
+		_height(0)
 	{
 		SetBaseAttributesTraceName(L"MediaStreamAtts");
 	}
@@ -52,6 +54,8 @@ private:
 	MF_STREAM_STATE _state;
 	FrameGenerator _generator;
 	GUID _format;
+	UINT _width;
+	UINT _height;
 	wil::com_ptr_nothrow<IMFStreamDescriptor> _descriptor;
 	wil::com_ptr_nothrow<IMFMediaEventQueue> _queue;
 	wil::com_ptr_nothrow<IMFMediaSource> _source;
