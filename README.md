@@ -33,6 +33,13 @@ Electron main process ──stdin──► eclipse-vcam.exe ─┬─► shared 
                                                   └─► softcam.dll (Windows 10, DirectShow apps)
 ```
 
+- **AI models.** Two providers: Decart (Lucy models) and fal.ai (Eden Live 14B,
+  `vast/eden-live-14b-video`). The admin panel has a key for each and a
+  "Customers can use this model" switch per model. fal's key never reaches the
+  app: fal's client sends its signalling through `api/fal_proxy.php` on the
+  server, which checks the customer's credit hold and adds the key. Billing
+  starts only once the AI is actually streaming. Client code: `src/web/assets/js/eden.js`
+  (fal client bundled from `@fal-ai/client` 1.11.0-alpha.6 in `vendor/fal-client.js`).
 - **Activation keys.** On first launch the app asks for an `ECLPS-XXXXX-XXXXX-XXXXX`
   key, the same keys you generate in the admin panel. The device token is
   stored encrypted and rechecked with the server on every launch, so revoking

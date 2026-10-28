@@ -4,6 +4,8 @@
 // and because an ES import failure aborts the script, the page would render
 // with dead dropdowns and no explanation. Keep it local.
 import { createDecartClient, models } from './vendor/decart-sdk.js';
+// Eden Live models (fal.ai) take a different connection path; see eden.js.
+import { isFalModel, openEden, imageToSmallDataUri, EDEN_WIDTH, EDEN_HEIGHT, EDEN_FPS } from './eden.js';
 
 const $ = (id) => document.getElementById(id);
 const cameraSelect = $('cameraSelect');
@@ -28,6 +30,10 @@ const meterCost = $('meterCost');
 const meterBar = $('meterBar');
 
 let realtimeClient = null;
+let liveIsFal = false;   // which provider the running session uses
+// The credit hold from session.php, kept from the moment it is placed so a
+// start that fails before going live still gets its deposit refunded.
+let pendingHoldId = null;
 let localStream = null;
 let session = null;     // { holdId, maxSeconds, perSecond, startedAt }
 let tickTimer = null;
@@ -228,7 +234,7 @@ async function setRefImage(file) {
   // Apply immediately if a stream is already running.
   if (realtimeClient) {
     try {
-      await realtimeClient.setImage(file);
+      await realtimeClient.setImage(liveIsFal ? await imageToSmallDataUri(file) : file);
       toast('Reference image applied');
     } catch {
       toast('Could not apply the reference image.', true);
@@ -290,6 +296,12 @@ function clearConnectWatchdog() {
 // Map SDK error codes to something a customer can act on.
 function friendlyConnectError(err) {
   const code = err?.code || '';
+  const msg = String(err?.message || '');
+  // Eden Live (fal) errors carry a message rather than a code.
+  if (/unauthori[sz]ed|invalid key|401/i.test(msg))
+    return 'The AI service rejected the server\'s key. Please contact support.';
+  if (/capacity|no runner|busy|429/i.test(msg))
+    return 'The AI service is busy right now. Please try again in a minute.';
   if (code === 'INVALID_API_KEY')  return 'The session token was rejected. Please try starting again.';
   if (code === 'WEBRTC_ICE_ERROR' || code === 'WEBRTC_TIMEOUT_ERROR')
     return 'Could not open a video connection. A firewall, VPN or restricted network is usually the cause.';
@@ -319,26 +331,41 @@ async function start() {
   try {
     // 1. Server holds credits and mints an ephemeral token.
     const s = await API.post('/api/session.php?action=start', { model: modelId });
+    pendingHoldId = s.holdId;
     setBalance(s.balance);
 
+    // Billing (the meter and the per-second charge) starts once the AI is
+    // actually streaming, never while it is still connecting.
+    const beginBilling = () => {
+      if (session) return;
+      session = { holdId: s.holdId, maxSeconds: s.maxSeconds, perSecond: s.perSecond, startedAt: Date.now() };
+      startMeter();
+      const mins = Math.floor(s.maxSeconds / 60);
+      toast(mins >= 1
+        ? `Live — up to ${mins} min on your balance`
+        : `Live — up to ${s.maxSeconds}s on your balance`);
+    };
+
     // 2. Open the chosen camera/mic at the model's native spec.
+    const fal = isFalModel(modelId);
+    liveIsFal = fal;
     setStatus('wait', 'Opening camera…');
-    const model = models.realtime(modelId);
+    const model = fal ? null : models.realtime(modelId);
     localStream = await navigator.mediaDevices.getUserMedia({
       video: {
         deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
-        frameRate: model.fps,
-        width: model.width,
-        height: model.height,
+        frameRate: fal ? EDEN_FPS : model.fps,
+        width: fal ? EDEN_WIDTH : model.width,
+        height: fal ? EDEN_HEIGHT : model.height,
       },
-      audio: micSelect.value ? { deviceId: { exact: micSelect.value } } : true,
+      // Eden Live is video only.
+      audio: fal ? false : (micSelect.value ? { deviceId: { exact: micSelect.value } } : true),
     });
     localVideo.srcObject = localStream;
     localPlaceholder.style.display = 'none';
 
-    // 3. Connect with the short-lived token — never the permanent key.
+    // 3. Connect. Neither path ever puts a permanent key in the browser.
     setStatus('wait', 'Connecting to AI…');
-    const client = createDecartClient({ apiKey: s.apiKey });
 
     // Without a watchdog the UI can sit on "Connecting to AI…" indefinitely:
     // connect() can resolve before any video arrives, and a blocked WebRTC
@@ -346,44 +373,74 @@ async function start() {
     // because waiting in line is normal and not a failure.
     armConnectWatchdog();
 
-    realtimeClient = await client.realtime.connect(localStream, {
-      model,
-      onRemoteStream: (remoteStream) => {
-        clearConnectWatchdog();
-        remoteVideo.srcObject = remoteStream;
-        remotePlaceholder.style.display = 'none';
-        window.__eclipseStream = remoteStream;   // picked up by desktop.js for the virtual camera
-        setStatus('on', 'Live');
-      },
-      onQueuePosition: ({ position, queueSize }) => {
-        armConnectWatchdog();
-        setStatus('wait', `Waiting in queue — ${position} of ${queueSize}`);
-        remotePlaceholder.textContent =
-          `You're number ${position} in the queue. The stream starts automatically when it's your turn.`;
-      },
-      onConnectionChange: (state) => {
-        if (state === 'connecting')    setStatus('wait', 'Connecting to AI…');
-        if (state === 'connected')     setStatus('wait', 'Connected — starting the model…');
-        if (state === 'generating')  { clearConnectWatchdog(); setStatus('on', 'Live'); }
-        if (state === 'reconnecting')  setStatus('wait', 'Connection dropped — reconnecting…');
-        if (state === 'disconnected' && session) {
-          setStatus('err', 'Disconnected');
-          toast('The AI connection dropped. Stopping.', true);
-          stop();
-        }
-      },
-      initialState: {
-        prompt: { text: promptInput.value.trim() || 'cinematic, high quality', enhance: true },
-        ...(refImage ? { image: refImage } : {}),
-      },
-    });
+    const onRemoteStream = (remoteStream) => {
+      clearConnectWatchdog();
+      remoteVideo.srcObject = remoteStream;
+      remotePlaceholder.style.display = 'none';
+      window.__eclipseStream = remoteStream;   // picked up by desktop.js for the virtual camera
+      setStatus('on', 'Live');
+    };
 
-    session = { holdId: s.holdId, maxSeconds: s.maxSeconds, perSecond: s.perSecond, startedAt: Date.now() };
-    startMeter();
-    const mins = Math.floor(s.maxSeconds / 60);
-    toast(mins >= 1
-      ? `Live — up to ${mins} min on your balance`
-      : `Live — up to ${s.maxSeconds}s on your balance`);
+    if (fal) {
+      // Eden Live (fal.ai): signalling goes through our server's relay, which
+      // holds the fal key and checks this session's credit hold.
+      realtimeClient = openEden({
+        modelId,
+        localStream,
+        prompt: promptInput.value.trim() || 'cinematic, high quality',
+        imageDataUri: refImage ? await imageToSmallDataUri(refImage) : null,
+        onStream: (stream) => { onRemoteStream(stream); beginBilling(); },
+        onState: (state) => {
+          if (state === 'live')       setStatus('wait', 'Connected — starting the model…');
+          if (state === 'generating') { clearConnectWatchdog(); setStatus('on', 'Live'); }
+          // Failures are reported through onError with their real reason;
+          // here only an unexpected close mid-stream.
+          if (state === 'closed' && realtimeClient) {
+            setStatus('err', 'Disconnected');
+            toast('The AI connection dropped. Stopping.', true);
+            stop();
+          }
+        },
+        onError: (err) => {
+          if (!realtimeClient) return;
+          console.error(err);
+          toast(friendlyConnectError(err), true);
+          setStatus('err', 'Error');
+          stop();
+        },
+      });
+    } else {
+      // Decart: connect with the short-lived token minted by session.php.
+      const client = createDecartClient({ apiKey: s.apiKey });
+      realtimeClient = await client.realtime.connect(localStream, {
+        model,
+        onRemoteStream,
+        onQueuePosition: ({ position, queueSize }) => {
+          armConnectWatchdog();
+          setStatus('wait', `Waiting in queue — ${position} of ${queueSize}`);
+          remotePlaceholder.textContent =
+            `You're number ${position} in the queue. The stream starts automatically when it's your turn.`;
+        },
+        onConnectionChange: (state) => {
+          if (state === 'connecting')    setStatus('wait', 'Connecting to AI…');
+          if (state === 'connected')     setStatus('wait', 'Connected — starting the model…');
+          if (state === 'generating')  { clearConnectWatchdog(); setStatus('on', 'Live'); }
+          if (state === 'reconnecting')  setStatus('wait', 'Connection dropped — reconnecting…');
+          if (state === 'disconnected' && session) {
+            setStatus('err', 'Disconnected');
+            toast('The AI connection dropped. Stopping.', true);
+            stop();
+          }
+        },
+        initialState: {
+          prompt: { text: promptInput.value.trim() || 'cinematic, high quality', enhance: true },
+          ...(refImage ? { image: refImage } : {}),
+        },
+      });
+    }
+
+    // Decart's connect() resolves once the session is up.
+    if (!fal) beginBilling();
   } catch (err) {
     console.error(err);
     clearConnectWatchdog();
@@ -406,7 +463,8 @@ function applyPrompt() {
 
 async function stop() {
   const seconds = elapsed();
-  const holdId = session?.holdId;
+  const holdId = session?.holdId ?? pendingHoldId;
+  pendingHoldId = null;
   stopMeter();
   clearConnectWatchdog();
   remotePlaceholder.textContent =
