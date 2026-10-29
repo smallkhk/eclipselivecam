@@ -40,6 +40,15 @@ Electron main process ──stdin──► eclipse-vcam.exe ─┬─► shared 
   server, which checks the customer's credit hold and adds the key. Billing
   starts only once the AI is actually streaming. Client code: `src/web/assets/js/eden.js`
   (fal client bundled from `@fal-ai/client` 1.11.0-alpha.6 in `vendor/fal-client.js`).
+- **Voice changer.** ElevenLabs Voice Changer (`eleven_multilingual_sts_v2`)
+  through `api/voice.php`, which charges credits per second of speech and adds
+  the ElevenLabs key on the server. The Studio (`assets/js/voice.js`,
+  `voice-ui.js`) cuts the mic into pieces at pauses ("Natural", up to ~4 s) or
+  every ~1 s ("Fast", maximum latency optimisation), never sends silence, and
+  plays the new voice in order into **VB-CABLE** ("CABLE Input"); call apps
+  choose "CABLE Output" as their mic. VB-CABLE isn't bundled (its terms need
+  VB-Audio's permission for that): the Studio detects it and links the free
+  official download.
 - **Activation keys.** On first launch the app asks for an `ECLPS-XXXXX-XXXXX-XXXXX`
   key, the same keys you generate in the admin panel. The device token is
   stored encrypted and rechecked with the server on every launch, so revoking

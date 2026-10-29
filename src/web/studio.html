@@ -50,6 +50,24 @@
       <button class="btn btn-ghost btn-sm" id="applyPrompt" style="align-self:flex-start">Apply prompt</button>
     </div>
 
+    <div class="field hidden" id="voiceBox">
+      <div class="group-title" style="margin-bottom:10px">🎙️ Voice changer</div>
+      <label for="voiceSelect">Voice</label>
+      <select id="voiceSelect"><option>Loading…</option></select>
+      <label for="voiceMode">Mode</label>
+      <select id="voiceMode">
+        <option value="natural">Natural — best sound, a bit more delay</option>
+        <option value="fast">Fast — less delay</option>
+      </select>
+      <label style="display:flex;gap:8px;align-items:center;font-weight:500;margin-top:4px">
+        <input type="checkbox" id="voiceMonitor" style="width:auto" /> Hear my new voice (use headphones)
+      </label>
+      <span class="hint" id="voiceCable"></span>
+      <button class="btn btn-ghost" id="voiceBtn" type="button">🎙️ Start voice changer</button>
+      <span class="hint" id="voiceStatus"></span>
+      <span class="faint" style="font-size:.76rem" id="voicePrice"></span>
+    </div>
+
     <div class="meter hidden" id="meter">
       <div class="meter-row"><span class="muted">Elapsed</span><b id="meterTime">00:00</b></div>
       <div class="meter-row"><span class="muted">Spent</span><b id="meterCost">0 pts</b></div>
@@ -100,6 +118,7 @@
 
 <script src="/assets/js/app.js"></script>
 <script type="module" src="/assets/js/studio.js"></script>
+<script type="module" src="/assets/js/voice-ui.js"></script>
 <script src="/assets/js/desktop.js"></script>
 </body>
 </html>

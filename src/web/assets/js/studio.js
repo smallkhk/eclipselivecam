@@ -109,7 +109,9 @@ async function listDevices() {
   // Never offer our own virtual camera as the input: it would feed the AI
   // its own output.
   fill(cameraSelect, devices.filter((d) => d.kind === 'videoinput' && !/EclipseLiveCam/i.test(d.label)), 'Camera');
-  fill(micSelect, devices.filter((d) => d.kind === 'audioinput'), 'Microphone');
+  // Hide the voice changer's virtual mic: recording it would feed the new
+  // voice back into itself.
+  fill(micSelect, devices.filter((d) => d.kind === 'audioinput' && !/CABLE Output/i.test(d.label)), 'Microphone');
 }
 
 async function loadModels() {
