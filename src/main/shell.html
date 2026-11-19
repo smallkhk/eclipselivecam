@@ -114,10 +114,17 @@ select.btn option{background:#111116;color:#e8e8f0}
         <button class="btn" id="btnCamInstall">Reinstall camera</button>
       </div>
       <div class="row">
-        <div class="row-l"><div class="label">Orientation</div><div class="desc">Portrait fills a phone screen, like a video call from a phone. Landscape suits laptops and OBS.</div></div>
+        <div class="row-l"><div class="label">Orientation</div><div class="desc">Landscape 1280×720 is the standard webcam shape and works best in calls. Portrait is 720×1280.</div></div>
         <select class="btn" id="camOrientation">
-          <option value="portrait">Portrait</option>
           <option value="landscape">Landscape</option>
+          <option value="portrait">Portrait</option>
+        </select>
+      </div>
+      <div class="row">
+        <div class="row-l"><div class="label">Picture</div><div class="desc">Whole picture shows all of the AI output with black bars if needed. Fill crops the edges instead.</div></div>
+        <select class="btn" id="camFit">
+          <option value="fit">Whole picture</option>
+          <option value="fill">Fill (crop)</option>
         </select>
       </div>
     </div>

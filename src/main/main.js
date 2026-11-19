@@ -175,12 +175,30 @@ ipcMain.handle('shell:clear-cache', async () => {
   return true;
 });
 ipcMain.handle('shell:set-setting', (e, key, value) => {
-  if (!['zoom', 'startMaximized', 'alwaysOnTop', 'cameraOrientation'].includes(key)) return;
+  if (!['zoom', 'startMaximized', 'alwaysOnTop', 'cameraOrientation', 'cameraFit'].includes(key)) return;
   saveSettings({ ...loadSettings(), [key]: value });
   if (key === 'zoom') contentView?.webContents.setZoomFactor(clampZoom(value) / 100);
   if (key === 'alwaysOnTop') mainWindow?.setAlwaysOnTop(!!value);
+  if (key === 'cameraFit') sendToPage('vcam:fit', cameraFit());
   if (key === 'cameraOrientation') return vcam.setOrientation(value);
 });
+
+// How the AI output is framed in the camera: 'fit' shows the whole picture
+// (black bars if the shapes differ), 'fill' crops the edges to fill it.
+const cameraFit = () => (loadSettings().cameraFit === 'fill' ? 'fill' : 'fit');
+ipcMain.handle('vcam:fit', () => cameraFit());
+function sendToPage(channel, value) {
+  const wc = contentView?.webContents;
+  if (wc && !wc.isDestroyed()) wc.send(channel, value);
+}
+
+// The camera now works like LiveChar's: landscape 1280x720 showing the whole
+// picture. Move existing installs over once; later choices are kept.
+function migrateCameraSettings() {
+  const s = loadSettings();
+  if (s.cameraLayout === 2) return;
+  saveSettings({ ...s, cameraOrientation: 'landscape', cameraFit: 'fit', cameraLayout: 2 });
+}
 
 const clampZoom = (z) => Math.min(150, Math.max(70, Number(z) || 100));
 
@@ -339,7 +357,8 @@ app.whenReady().then(async () => {
   createSplash();
   vcam.refreshInstalled();
   updater.init();
-  await vcam.setOrientation(loadSettings().cameraOrientation || 'portrait');
+  migrateCameraSettings();
+  await vcam.setOrientation(loadSettings().cameraOrientation || 'landscape');
   vcam.start();
 
   activated = await checkActivation(ses);

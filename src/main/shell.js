@@ -54,6 +54,7 @@ $('camOrientation').addEventListener('change', async (e) => {
   await api.setSetting('cameraOrientation', e.target.value);
   toast(`Camera switched to ${e.target.value}. If a call app is open, pick the camera again (or restart the app).`);
 });
+$('camFit').addEventListener('change', (e) => api.setSetting('cameraFit', e.target.value));
 $('btnCamInstall').addEventListener('click', async () => {
   $('btnCamInstall').disabled = true;
   const s = await api.installCamera().catch(() => null);
@@ -122,6 +123,7 @@ api.onUpdateStatus(renderUpdate);
   $('zoomVal').textContent = (s.zoom || 100) + '%';
   $('startMaximized').checked = !!s.startMaximized;
   $('alwaysOnTop').checked = !!s.alwaysOnTop;
+  $('camFit').value = s.cameraFit === 'fill' ? 'fill' : 'fit';
   $('actDesc').textContent = info.activated ? 'This device is activated.' : 'Not activated yet.';
   setMaxIcon(info.maximized);
   renderCam(info.camera);

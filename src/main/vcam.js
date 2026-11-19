@@ -28,7 +28,7 @@ const isWindows11 = () => process.platform === 'win32' && Number(os.release().sp
 // Portrait (720x1280, like a phone video) or landscape (1280x720).
 const SIZES = { portrait: [720, 1280], landscape: [1280, 720] };
 const FPS = 30;
-let orientation = 'portrait';
+let orientation = 'landscape';
 const size = () => SIZES[orientation];
 
 // The Windows 11 camera runs inside a Windows service, so it reads the

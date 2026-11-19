@@ -1,8 +1,8 @@
 /* ── EclipseLiveCam desktop — virtual camera feed ───────────────────────────
  * Only active inside the desktop app (window.eclipseDesktop comes from its
  * preload script). Takes the live AI output the Studio publishes on
- * window.__eclipseStream, fills the camera frame with it (portrait 720×1280 or
- * landscape 1280×720, centre-cropped) and sends each frame to the app, which
+ * window.__eclipseStream, frames it for the camera (landscape 1280×720 or
+ * portrait 720×1280; whole picture or cropped to fill) and sends each frame to the app, which
  * pushes it into the "EclipseLiveCam" camera.
  * When nothing is streaming the camera shows a branded standby card, so it can
  * stay selected in Zoom/Meet between sessions.
@@ -13,7 +13,7 @@
 
   const FPS = 30;
   const FRAME_MS = 1000 / FPS;
-  let W = 720, H = 1280;   // replaced by the camera's real size from the app
+  let W = 1280, H = 720;   // replaced by the camera's real size from the app
   const canvas = document.createElement('canvas');
   canvas.width = W;
   canvas.height = H;
@@ -29,13 +29,14 @@
     D.vcamFrame(ctx.getImageData(0, 0, W, H).data);
   }
 
-  // Fill the whole camera frame, cropping the edges that don't fit. The AI
-  // output is landscape, so a portrait camera keeps the centre (the person).
+  // 'fit' (default): the whole AI picture, centred, black bars where the
+  // shapes differ. 'fill': cover the frame and crop the edges.
+  let fit = 'fit';
   function drawCover(src, sw, sh) {
     ctx.fillStyle = '#000';
     ctx.fillRect(0, 0, W, H);
     if (!sw || !sh) return;
-    const scale = Math.max(W / sw, H / sh);
+    const scale = fit === 'fill' ? Math.max(W / sw, H / sh) : Math.min(W / sw, H / sh);
     const dw = Math.round(sw * scale), dh = Math.round(sh * scale);
     ctx.drawImage(src, (W - dw) >> 1, (H - dh) >> 1, dw, dh);
   }
@@ -182,4 +183,6 @@
 
   D.onVcamStatus(render);
   D.vcamStatus().then(render);
+  const setFit = (f) => { fit = f === 'fill' ? 'fill' : 'fit'; };
+  if (D.onVcamFit) { D.onVcamFit(setFit); D.vcamFit().then(setFit).catch(() => {}); }
 })();
