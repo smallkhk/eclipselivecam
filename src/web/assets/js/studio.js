@@ -314,6 +314,19 @@ function friendlyConnectError(err) {
   return err?.message || 'Could not start the stream.';
 }
 
+// Decart models newer than the bundled SDK. Each streams exactly like the
+// listed model (same endpoint, size and frame rate), only under its own name.
+const DECART_NEWER_MODELS = { 'lucy-2.6': 'lucy-2.5' };
+
+function decartRealtimeModel(modelId) {
+  let model = null;
+  try { model = models.realtime(modelId); } catch {}
+  if (model && model.name === modelId) return model;
+  const base = DECART_NEWER_MODELS[modelId];
+  if (!base) throw new Error(`This app version doesn't support the model "${modelId}" yet. Please update the app.`);
+  return { ...models.realtime(base), name: modelId };
+}
+
 // ── Session ─────────────────────────────────────────────────────────────────
 async function start() {
   const modelId = modelSelect.value;
@@ -352,7 +365,7 @@ async function start() {
     const fal = isFalModel(modelId);
     liveIsFal = fal;
     setStatus('wait', 'Opening camera…');
-    const model = fal ? null : models.realtime(modelId);
+    const model = fal ? null : decartRealtimeModel(modelId);
     localStream = await navigator.mediaDevices.getUserMedia({
       video: {
         deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
