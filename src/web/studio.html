@@ -91,15 +91,19 @@
     </div>
 
     <div class="videos">
-      <div class="video-box">
-        <span class="badge live">● CAMERA</span>
-        <video id="localVideo" autoplay muted playsinline></video>
-        <div class="placeholder" id="localPlaceholder">Your camera preview appears here.</div>
+      <div class="video-panel">
+        <div class="video-head"><span class="badge live">● CAMERA</span></div>
+        <div class="video-box">
+          <video id="localVideo" autoplay muted playsinline></video>
+          <div class="placeholder" id="localPlaceholder">Your camera preview appears here.</div>
+        </div>
       </div>
-      <div class="video-box">
-        <span class="badge out">✦ AI OUTPUT</span>
-        <video id="remoteVideo" autoplay playsinline></video>
-        <div class="placeholder" id="remotePlaceholder">The transformed output appears here — and in the EclipseLiveCam camera.</div>
+      <div class="video-panel">
+        <div class="video-head"><span class="badge out">✦ AI OUTPUT</span></div>
+        <div class="video-box">
+          <video id="remoteVideo" autoplay playsinline></video>
+          <div class="placeholder" id="remotePlaceholder">The transformed output appears here — and in the EclipseLiveCam camera.</div>
+        </div>
       </div>
     </div>
 
