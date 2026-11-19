@@ -119,8 +119,10 @@ jobs:
           tag_name: ${{ steps.tag.outputs.tag }}
           name: ${{ steps.tag.outputs.name }}
           target_commitish: ${{ github.sha }}
-          prerelease: ${{ github.ref != 'refs/heads/main' }}
-          make_latest: ${{ github.ref == 'refs/heads/main' }}
+          # main and the desktop branch publish full releases: installed apps
+          # only auto-update to a release marked Latest.
+          prerelease: ${{ github.ref != 'refs/heads/main' && github.ref != 'refs/heads/desktop-virtual-cam' }}
+          make_latest: ${{ github.ref == 'refs/heads/main' || github.ref == 'refs/heads/desktop-virtual-cam' }}
           fail_on_unmatched_files: true
           # latest.yml + .blockmap are what installed apps read to auto-update.
           files: |
