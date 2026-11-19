@@ -187,6 +187,12 @@ ipcMain.handle('shell:set-setting', (e, key, value) => {
 // (black bars if the shapes differ), 'fill' crops the edges to fill it.
 const cameraFit = () => (loadSettings().cameraFit === 'fill' ? 'fill' : 'fit');
 ipcMain.handle('vcam:fit', () => cameraFit());
+// The Studio's Video shape switch sets the camera's orientation to match.
+ipcMain.handle('vcam:set-orientation', (e, value) => {
+  if (value !== 'portrait' && value !== 'landscape') return vcam.status();
+  saveSettings({ ...loadSettings(), cameraOrientation: value });
+  return vcam.setOrientation(value);
+});
 function sendToPage(channel, value) {
   const wc = contentView?.webContents;
   if (wc && !wc.isDestroyed()) wc.send(channel, value);

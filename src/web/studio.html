@@ -25,6 +25,14 @@
       <select id="modelSelect"><option>Loading…</option></select>
       <span class="hint" id="batchHint"></span>
     </div>
+    <div class="field">
+      <label for="shapeSelect">Video shape</label>
+      <select id="shapeSelect">
+        <option value="landscape">Landscape (16:9)</option>
+        <option value="portrait">Portrait (9:16)</option>
+      </select>
+      <span class="hint" id="shapeHint"></span>
+    </div>
 
     <div class="field">
       <div class="group-title" style="margin-bottom:10px">Style presets</div>
@@ -90,7 +98,7 @@
       <button class="btn btn-ghost btn-sm" id="fsBtn" disabled title="Fullscreen the output">⛶ Fullscreen</button>
     </div>
 
-    <div class="videos">
+    <div class="videos" id="videos">
       <div class="video-panel">
         <div class="video-head"><span class="badge live">● CAMERA</span></div>
         <div class="video-box">

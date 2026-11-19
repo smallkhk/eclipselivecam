@@ -183,6 +183,15 @@
 
   D.onVcamStatus(render);
   D.vcamStatus().then(render);
+  // The Studio's Video shape switch: the camera follows it, so a portrait
+  // stream comes out of the camera as portrait.
+  const followShape = (shape) => {
+    if ((shape === 'portrait' || shape === 'landscape') && D.setCameraOrientation) {
+      D.setCameraOrientation(shape).catch(() => {});
+    }
+  };
+  window.addEventListener('eclipse:shape', (e) => followShape(e.detail));
+  if (window.__eclipseShape) followShape(window.__eclipseShape);
   const setFit = (f) => { fit = f === 'fill' ? 'fill' : 'fit'; };
   if (D.onVcamFit) { D.onVcamFit(setFit); D.vcamFit().then(setFit).catch(() => {}); }
 })();

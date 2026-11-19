@@ -50,10 +50,6 @@ $('alwaysOnTop').addEventListener('change', (e) => api.setSetting('alwaysOnTop',
 
 $('btnReload').addEventListener('click', () => { api.reload(); showSettings(false); });
 $('btnCache').addEventListener('click', async () => { await api.clearCache(); toast('Cache cleared'); });
-$('camOrientation').addEventListener('change', async (e) => {
-  await api.setSetting('cameraOrientation', e.target.value);
-  toast(`Camera switched to ${e.target.value}. If a call app is open, pick the camera again (or restart the app).`);
-});
 $('camFit').addEventListener('change', (e) => api.setSetting('cameraFit', e.target.value));
 $('btnCamInstall').addEventListener('click', async () => {
   $('btnCamInstall').disabled = true;
@@ -80,7 +76,7 @@ function renderCam(s) {
   $('tbCamText').textContent = text;
   $('camDesc').textContent = desc;
   $('btnCamInstall').hidden = s.state === 'unsupported';
-  if (s.orientation) $('camOrientation').value = s.orientation;
+  if (s.orientation) $('camOrientation').textContent = s.orientation === 'portrait' ? 'Portrait 720×1280' : 'Landscape 1280×720';
 }
 api.onCameraStatus(renderCam);
 

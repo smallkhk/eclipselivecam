@@ -64,6 +64,7 @@ function setLiveUI(live) {
   cameraSelect.disabled = live;
   micSelect.disabled = live;
   modelSelect.disabled = live;
+  syncShape(live);
   meterEl.classList.toggle('hidden', !live);
 }
 
@@ -135,10 +136,56 @@ async function loadModels() {
     o.textContent = `${m.label} — ${m.perSecond} pts/sec`;
     modelSelect.appendChild(o);
   }
+  syncShape();
   if (!modelCatalog.length) {
     modelSelect.innerHTML = '<option value="">No realtime models configured</option>';
     startBtn.disabled = true;
   }
+}
+
+// ── Video shape ─────────────────────────────────────────────────────────────
+// Decart (Lucy) streams portrait when the camera is opened in portrait (width
+// and height swapped), so the AI output and the virtual camera come out 9:16.
+// Eden Live only streams landscape.
+const shapeSelect = $('shapeSelect');
+const shapeHint = $('shapeHint');
+const SHAPE_KEY = 'eclipse.videoShape';
+
+function savedShape() {
+  try { return localStorage.getItem(SHAPE_KEY) === 'portrait' ? 'portrait' : 'landscape'; } catch { return 'landscape'; }
+}
+// What the next (or current) stream uses.
+function currentShape() {
+  if (!shapeSelect) return 'landscape';
+  return isFalModel(modelSelect.value) ? 'landscape' : shapeSelect.value;
+}
+function syncShape(live = !!realtimeClient) {
+  if (!shapeSelect) return;
+  const fal = isFalModel(modelSelect.value);
+  if (fal) shapeSelect.value = 'landscape';
+  else if (!live) shapeSelect.value = savedShape();
+  shapeSelect.disabled = live || fal;
+  if (shapeHint) {
+    shapeHint.textContent = fal
+      ? 'Eden Live streams in landscape only.'
+      : shapeSelect.value === 'portrait'
+        ? 'Portrait 9:16, like a phone video. The virtual camera switches to portrait too — if a call app already has it open, pick the camera there again.'
+        : 'Landscape 16:9, the standard webcam shape.';
+  }
+  const shape = currentShape();
+  document.getElementById('videos')?.classList.toggle('shape-portrait', shape === 'portrait');
+  // The desktop app matches the virtual camera to the stream's shape.
+  if (window.__eclipseShape !== shape) {
+    window.__eclipseShape = shape;
+    window.dispatchEvent(new CustomEvent('eclipse:shape', { detail: shape }));
+  }
+}
+if (shapeSelect) {
+  shapeSelect.addEventListener('change', () => {
+    try { localStorage.setItem(SHAPE_KEY, shapeSelect.value); } catch {}
+    syncShape();
+  });
+  modelSelect.addEventListener('change', () => syncShape());
 }
 
 function buildPresets() {
@@ -366,12 +413,17 @@ async function start() {
     liveIsFal = fal;
     setStatus('wait', 'Opening camera…');
     const model = fal ? null : decartRealtimeModel(modelId);
+    // Portrait: open the camera 9:16 (width and height swapped). Decart then
+    // generates portrait output.
+    const portrait = !fal && currentShape() === 'portrait';
+    const [camW, camH] = fal ? [EDEN_WIDTH, EDEN_HEIGHT]
+      : portrait ? [model.height, model.width] : [model.width, model.height];
     localStream = await navigator.mediaDevices.getUserMedia({
       video: {
         deviceId: cameraSelect.value ? { exact: cameraSelect.value } : undefined,
         frameRate: fal ? EDEN_FPS : model.fps,
-        width: fal ? EDEN_WIDTH : model.width,
-        height: fal ? EDEN_HEIGHT : model.height,
+        width: camW,
+        height: camH,
       },
       // Eden Live is video only.
       audio: fal ? false : (micSelect.value ? { deviceId: { exact: micSelect.value } } : true),
