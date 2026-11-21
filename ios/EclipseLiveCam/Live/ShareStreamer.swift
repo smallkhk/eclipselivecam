@@ -17,6 +17,8 @@ final class ShareStreamer {
     private var failures = 0
     private let fps: Double = 12
     private let maxSide: CGFloat = 960
+    private var audioInFlight = false
+    private var audioQueue: [Data] = []
 
     /// main thread
     var onViewers: ((Int) -> Void)?
@@ -59,6 +61,29 @@ final class ShareStreamer {
                     if let viewers { DispatchQueue.main.async { self.onViewers?(viewers) } }
                 }
             }
+        }.resume()
+    }
+
+    /// The changed-voice audio (24 kHz s16le mono), one phrase chunk at a time, in order.
+    func sendAudio(_ pcm: Data) {
+        queue.async {
+            guard !self.stopped, !pcm.isEmpty else { return }
+            if self.audioQueue.count > 8 { self.audioQueue.removeFirst(self.audioQueue.count - 8) }
+            self.audioQueue.append(pcm)
+            self.flushAudio()
+        }
+    }
+
+    private func flushAudio() {
+        guard !audioInFlight, !stopped, !audioQueue.isEmpty else { return }
+        let chunk = audioQueue.removeFirst()
+        guard var req = try? API.shared.request("/api/live.php?action=audio", method: "POST") else { return }
+        req.setValue("application/octet-stream", forHTTPHeaderField: "Content-Type")
+        req.timeoutInterval = 10
+        audioInFlight = true
+        API.shared.session.uploadTask(with: req, from: chunk) { [weak self] _, _, _ in
+            guard let self else { return }
+            self.queue.async { self.audioInFlight = false; self.flushAudio() }
         }.resume()
     }
 

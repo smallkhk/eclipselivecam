@@ -91,7 +91,11 @@ final class OutputHub {
     /// recording, placed so it lines up with the lips.
     func addVoice(_ pcm: Data, spokenAt: CFTimeInterval) {
         let at = spokenAt + avOffset
-        queue.async { if self.recorder != nil { self.recordedVoice.append((pcm, at)) } }
+        let streamer = self.streamer
+        queue.async {
+            if self.recorder != nil { self.recordedVoice.append((pcm, at)) }
+            streamer?.sendAudio(pcm)   // the live link plays phrases as they arrive
+        }
     }
 
     // MARK: photo

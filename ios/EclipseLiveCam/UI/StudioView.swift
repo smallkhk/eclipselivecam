@@ -276,7 +276,7 @@ struct StudioView: View {
                 Toggle(isOn: Binding(get: { live.shareOn }, set: { on in Task { await live.setShare(on: on) } })) {
                     VStack(alignment: .leading, spacing: 2) {
                         Text("Share live to my link").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
-                        Text("Anyone who opens your link watches your character live in a browser. It is a watch page, not a camera.")
+                        Text("Anyone who opens your link watches your character live in a browser — a watch page, not a camera. Turn on the voice changer for sound on the link.")
                             .font(.caption).foregroundStyle(Theme.dim)
                     }
                 }
