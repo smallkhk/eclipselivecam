@@ -4,7 +4,7 @@ import Photos
 import UIKit
 
 /// Everything that happens to the AI output frames: on screen (GPU, no copies), picture-in-picture,
-/// photo and recording (both with the current zoom).
+/// photo and recording (both with the current zoom, recordings with the changed voice).
 final class OutputHub {
     private let queue = DispatchQueue(label: "eclipse.output", qos: .userInteractive)
     private let framedPool = PixelPool()
@@ -15,6 +15,14 @@ final class OutputHub {
         get { lock.lock(); defer { lock.unlock() }; return _framing }
         set { lock.lock(); _framing = newValue; lock.unlock() }
     }
+
+    /// how much later the AI video shows a movement than the mic hears it (lip sync), seconds
+    var avOffset: CFTimeInterval {
+        get { lock.lock(); defer { lock.unlock() }; return _avOffset }
+        set { lock.lock(); _avOffset = newValue; lock.unlock() }
+    }
+    private var _avOffset: CFTimeInterval = 0.3
+    private var recordedVoice: [(Data, CFTimeInterval)] = []
 
     weak var display: VideoSurface?
     weak var pipDisplay: VideoSurface?
@@ -71,6 +79,13 @@ final class OutputHub {
         return FrameOps.render(FrameOps.framed(CIImage(cvPixelBuffer: pb), f), into: framedPool, w, h)
     }
 
+    /// A phrase in the new voice (24 kHz), with the time it was spoken (host clock). Goes into the
+    /// recording, placed so it lines up with the lips.
+    func addVoice(_ pcm: Data, spokenAt: CFTimeInterval) {
+        let at = spokenAt + avOffset
+        queue.async { if self.recorder != nil { self.recordedVoice.append((pcm, at)) } }
+    }
+
     // MARK: photo
 
     func photo() async throws {
@@ -92,16 +107,25 @@ final class OutputHub {
         var err: Error?
         queue.sync {
             guard let pb = lastFrame else { err = APIError(message: "Go live first, then record", status: 0); return }
-            do { recorder = try Recorder(size: FrameOps.size(pb)) } catch { err = error }
+            do { recorder = try Recorder(size: FrameOps.size(pb)); recordedVoice = [] } catch { err = error }
         }
         if let err { throw err }
     }
 
     func stopRecording() async throws {
-        let r: Recorder? = queue.sync { let r = recorder; recorder = nil; return r }
+        let (r, voice): (Recorder?, [(Data, CFTimeInterval)]) = queue.sync {
+            let r = recorder; recorder = nil
+            let v = recordedVoice; recordedVoice = []
+            return (r, v)
+        }
         guard let r, let url = await r.finish() else { return }
         defer { try? FileManager.default.removeItem(at: url) }
-        try await PhotoLibrary.saveVideo(url)
+        if !voice.isEmpty, let merged = try? await AVMerge.withVoice(video: url, videoStart: r.startTime, phrases: voice) {
+            defer { try? FileManager.default.removeItem(at: merged) }
+            try await PhotoLibrary.saveVideo(merged)
+        } else {
+            try await PhotoLibrary.saveVideo(url)
+        }
     }
 }
 
@@ -112,6 +136,7 @@ final class Recorder {
     private let adaptor: AVAssetWriterInputPixelBufferAdaptor
     private let size: CGSize
     private var started = false
+    private(set) var startTime: CFTimeInterval = 0
     let url: URL
 
     init(size: CGSize) throws {
@@ -135,6 +160,7 @@ final class Recorder {
         if !started {
             guard writer.startWriting() else { return }
             writer.startSession(atSourceTime: t); started = true
+            startTime = t.seconds
         }
         if input.isReadyForMoreMediaData { adaptor.append(pb, withPresentationTime: t) }
     }
@@ -144,6 +170,70 @@ final class Recorder {
         input.markAsFinished()
         await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in writer.finishWriting { c.resume() } }
         return writer.status == .completed ? url : nil
+    }
+}
+
+/// Puts the new-voice phrases on the recorded video at the moments they were spoken.
+enum AVMerge {
+    static func withVoice(video: URL, videoStart: CFTimeInterval, phrases: [(Data, CFTimeInterval)]) async throws -> URL {
+        let rate = VoiceEngine.outRate
+        let asset = AVURLAsset(url: video)
+        let duration = try await asset.load(.duration)
+        let total = max(1, Int(duration.seconds * rate))
+        var mix = [Float](repeating: 0, count: total)
+        for (pcm, at) in phrases {
+            let pos = Int(((at - videoStart) * rate).rounded())
+            pcm.withUnsafeBytes { raw in
+                let s = raw.bindMemory(to: Int16.self)
+                for i in 0..<s.count {
+                    let j = pos + i
+                    if j >= 0 && j < total { mix[j] = max(-1, min(1, mix[j] + Float(Int16(littleEndian: s[i])) / 32768)) }
+                }
+            }
+        }
+
+        let tmp = FileManager.default.temporaryDirectory
+        let audioURL = tmp.appendingPathComponent("voice-\(UUID().uuidString).m4a")
+        guard let fmt = AVAudioFormat(standardFormatWithSampleRate: rate, channels: 1) else {
+            throw APIError(message: "Could not save the voice", status: 0)
+        }
+        do {
+            let file = try AVAudioFile(forWriting: audioURL, settings: [AVFormatIDKey: kAudioFormatMPEG4AAC, AVSampleRateKey: rate, AVNumberOfChannelsKey: 1],
+                                       commonFormat: .pcmFormatFloat32, interleaved: false)
+            var o = 0
+            while o < total {
+                let n = min(Int(rate), total - o)
+                guard let buf = AVAudioPCMBuffer(pcmFormat: fmt, frameCapacity: AVAudioFrameCount(n)), let dst = buf.floatChannelData?[0] else { break }
+                buf.frameLength = AVAudioFrameCount(n)
+                mix.withUnsafeBufferPointer { src in dst.update(from: src.baseAddress! + o, count: n) }
+                try file.write(from: buf)
+                o += n
+            }
+        }   // the file closes here
+        defer { try? FileManager.default.removeItem(at: audioURL) }
+
+        let comp = AVMutableComposition()
+        guard let vSrc = try await asset.loadTracks(withMediaType: .video).first,
+              let vDst = comp.addMutableTrack(withMediaType: .video, preferredTrackID: kCMPersistentTrackID_Invalid) else {
+            throw APIError(message: "No video in the recording", status: 0)
+        }
+        try vDst.insertTimeRange(CMTimeRange(start: .zero, duration: duration), of: vSrc, at: .zero)
+        vDst.preferredTransform = try await vSrc.load(.preferredTransform)
+        let audioAsset = AVURLAsset(url: audioURL)
+        if let aSrc = try await audioAsset.loadTracks(withMediaType: .audio).first,
+           let aDst = comp.addMutableTrack(withMediaType: .audio, preferredTrackID: kCMPersistentTrackID_Invalid) {
+            let aDur = try await audioAsset.load(.duration)
+            try aDst.insertTimeRange(CMTimeRange(start: .zero, duration: CMTimeMinimum(aDur, duration)), of: aSrc, at: .zero)
+        }
+        let out = tmp.appendingPathComponent("eclipselivecam-\(Int(Date().timeIntervalSince1970)).mp4")
+        guard let export = AVAssetExportSession(asset: comp, presetName: AVAssetExportPresetPassthrough) else {
+            throw APIError(message: "Could not save the video", status: 0)
+        }
+        export.outputURL = out
+        export.outputFileType = .mp4
+        await withCheckedContinuation { (c: CheckedContinuation<Void, Never>) in export.exportAsynchronously { c.resume() } }
+        guard export.status == .completed else { throw export.error ?? APIError(message: "Could not save the video", status: 0) }
+        return out
     }
 }
 

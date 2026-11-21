@@ -34,6 +34,19 @@ final class LiveController: ObservableObject {
     @AppStorage("ec.portrait") var portrait = true { willSet { objectWillChange.send() } }
     @AppStorage("ec.mirror") var mirror = true { willSet { objectWillChange.send() } }
     @AppStorage("ec.backCamera") var backCamera = false { willSet { objectWillChange.send() } }
+    // voice changer
+    @AppStorage("ec.voiceOn") var voiceOn = false { willSet { objectWillChange.send() } }
+    @AppStorage("ec.voiceID") var voiceID = "" { willSet { objectWillChange.send() } }
+    @AppStorage("ec.voiceName") var voiceName = "" { willSet { objectWillChange.send() } }
+    @AppStorage("ec.voiceMode") var voiceMode = "natural" { willSet { objectWillChange.send() } }
+    @AppStorage("ec.voiceMonitor") var voiceMonitor = false { willSet { objectWillChange.send() } }
+    @AppStorage("ec.avOffset") var avOffset = 0.3 { willSet { objectWillChange.send() } }
+    @Published var voiceAvailable = false
+    @Published var voicePerSecond = 0
+    @Published var voiceState = ""
+    private var voice: VoiceEngine?
+    private var voiceUsed = false
+    @Published var rotation = 0
 
     @Published var models: [StudioModel] = []
     @Published var modelsError = ""
@@ -104,6 +117,7 @@ final class LiveController: ObservableObject {
     }
     func attachInput(_ v: VideoSurface) { router.input = v }
     func resetZoom() { outputSurface?.framing = .full }
+    func setZoom(_ z: CGFloat) { outputSurface?.setZoom(z) }
 
     // MARK: catalog
 
@@ -158,9 +172,10 @@ final class LiveController: ObservableObject {
             let (w, h) = isPortraitOutput ? (spec.height, spec.width) : (spec.width, spec.height)
             status = "Opening camera…"
             camera.configure(width: w, height: h, fps: spec.fps)
-            camera.setRotation(0)
+            camera.setRotation(rotation)
             hub.reset()
-            AudioSessionSetup.activate()
+            hub.avOffset = avOffset
+            if voiceOn && voiceAvailable && !voiceID.isEmpty { await startVoice() } else { AudioSessionSetup.activate() }
             try await camera.start(position: backCamera ? .back : .front)
             pip.setEnabled(true)
 
@@ -263,6 +278,7 @@ final class LiveController: ObservableObject {
             }
         }
         if recording { await toggleRecording() }
+        stopVoice()
         await e?.stop()
         camera.stop()
         pip.setEnabled(false)
@@ -294,6 +310,75 @@ final class LiveController: ObservableObject {
         guard running || starting else { return }
         do { try await camera.start(position: backCamera ? .back : .front) } catch { note = error.localizedDescription }
     }
+
+    func rotateCamera() {
+        rotation = (rotation + 90) % 360
+        camera.setRotation(rotation)
+    }
+
+    // MARK: voice changer (ElevenLabs via the server's api/voice.php)
+
+    func loadVoiceConfig() async {
+        guard let r = try? await API.shared.get("/api/voice.php?action=config") else { voiceAvailable = false; return }
+        voiceAvailable = (r["enabled"] as? Bool) == true
+        voicePerSecond = Account.int(r["perSecond"]) ?? 0
+    }
+
+    private func startVoice() async {
+        guard voice == nil, !voiceID.isEmpty else { return }
+        guard await VoiceEngine.authorize() else { note = "Allow the microphone for EclipseLiveCam in Settings to change your voice"; return }
+        do { try VoiceAudioSession.activate() } catch { note = "Microphone: \(error.localizedDescription)"; return }
+        var ev = VoiceEngine.Events()
+        let hub = self.hub
+        ev.converted = { pcm, at in hub.addVoice(pcm, spokenAt: at) }
+        ev.state = { [weak self] s in Task { @MainActor in self?.voiceState = s } }
+        ev.balance = { [weak self] b in Task { @MainActor in self?.onBalance(b) } }
+        ev.failed = { [weak self] msg in Task { @MainActor in
+            self?.voiceState = msg
+            self?.note = "Voice: \(msg)"
+            let m = msg.lowercased()
+            if m.contains("credit") || m.contains("switched off") || m.contains("not set up") { self?.stopVoice() }
+        } }
+        let v = VoiceEngine(voiceID: voiceID, mode: voiceMode, events: ev)
+        v.monitor = voiceMonitor
+        do { try v.start(); voice = v; voiceUsed = true } catch { note = "Voice: \(error.localizedDescription)"; voiceState = "" }
+    }
+
+    private func stopVoice() {
+        voice?.stop()
+        voice = nil
+        voiceState = ""
+        if voiceUsed {
+            voiceUsed = false
+            // one history line for the whole voice session
+            Task { [weak self] in
+                if let r = try? await API.shared.post("/api/voice.php?action=stop", [:]), let b = Account.int(r["balance"]) {
+                    await MainActor.run { self?.onBalance(b) }
+                }
+            }
+        }
+    }
+
+    /// Turn the voice changer on/off, or switch voices or modes, while live.
+    func setVoice(on: Bool) async {
+        voiceOn = on
+        guard running || starting else { return }
+        stopVoice()
+        if on { await startVoice() } else { AudioSessionSetup.activate() }
+    }
+
+    func chooseVoice(id: String, name: String) async {
+        voiceID = id; voiceName = name
+        if voiceOn && (running || starting) { stopVoice(); await startVoice() }
+    }
+
+    func setVoiceMode(_ mode: String) async {
+        voiceMode = mode
+        if voiceOn && (running || starting) { stopVoice(); await startVoice() }
+    }
+
+    func setMonitor(_ on: Bool) { voiceMonitor = on; voice?.monitor = on }
+    func setAVOffset(_ v: Double) { avOffset = v; hub.avOffset = v }
 
     // MARK: photo / record
 

@@ -46,7 +46,7 @@ struct StudioView: View {
             }
         }
         .screenBackground()
-        .task { await live.loadModels() }
+        .task { await live.loadModels(); await live.loadVoiceConfig() }
         .sheet(item: $web, onDismiss: { Task { await app.refreshBalance() } }) { SafariView(url: $0).ignoresSafeArea() }
         .onChange(of: phase) { p in
             // With PiP the camera keeps running behind other apps. Without it iOS pauses the camera, so stop billing.
@@ -263,17 +263,26 @@ struct StudioView: View {
                     .foregroundStyle(Theme.text)
             }
 
+            VoiceCard()
+
             Card {
-                SectionTitle(text: "Camera")
+                SectionTitle(text: "Camera & output")
                 HStack(spacing: 8) {
                     Button { Task { await live.flipCamera() } } label: {
                         Label(live.backCamera ? "Back" : "Front", systemImage: "arrow.triangle.2.circlepath.camera")
                     }
                     .buttonStyle(SoftButtonStyle())
+                    Button { live.rotateCamera() } label: { Label("\(live.rotation)°", systemImage: "rotate.right") }
+                        .buttonStyle(SoftButtonStyle())
                     Button { live.mirror.toggle() } label: {
-                        Label("Mirror preview", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
+                        Label("Mirror", systemImage: "arrow.left.and.right.righttriangle.left.righttriangle.right")
                     }
                     .buttonStyle(SoftButtonStyle(tint: live.mirror ? Theme.brand2 : Theme.dim))
+                }
+                HStack {
+                    Image(systemName: "plus.magnifyingglass").foregroundStyle(Theme.dim)
+                    Slider(value: Binding(get: { Double(live.zoom) }, set: { live.setZoom(CGFloat($0)) }), in: 1...4).tint(Theme.brand2)
+                    Text(String(format: "%.1f×", live.zoom)).font(.footnote.monospacedDigit()).foregroundStyle(Theme.dim).frame(width: 40)
                 }
                 Text("Pinch the output to zoom, drag to move, double-tap to reset. Photos and recordings go to your Photos.")
                     .font(.caption).foregroundStyle(Theme.dim)
