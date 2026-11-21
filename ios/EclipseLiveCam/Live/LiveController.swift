@@ -68,6 +68,11 @@ final class LiveController: ObservableObject {
     @Published var recording = false
     @Published var recordStart = Date()
     @Published var pipActive = false
+    // share-live link
+    @AppStorage("ec.shareOn") var shareOn = false { willSet { objectWillChange.send() } }
+    @Published var shareURL = ""
+    @Published var viewers = 0
+    @Published var shareProblem: String?
     // billing
     @Published var elapsed = 0
     @Published var spent = 0
@@ -178,6 +183,7 @@ final class LiveController: ObservableObject {
             if voiceOn && voiceAvailable && !voiceID.isEmpty { await startVoice() } else { AudioSessionSetup.activate() }
             try await camera.start(position: backCamera ? .back : .front)
             pip.setEnabled(true)
+            if shareOn { await startShare() }
 
             // 3. Connect the AI. Neither path puts a permanent key on the phone.
             status = "Connecting to AI…"
@@ -279,6 +285,7 @@ final class LiveController: ObservableObject {
         }
         if recording { await toggleRecording() }
         stopVoice()
+        stopShare()
         await e?.stop()
         camera.stop()
         pip.setEnabled(false)
@@ -379,6 +386,39 @@ final class LiveController: ObservableObject {
 
     func setMonitor(_ on: Bool) { voiceMonitor = on; voice?.monitor = on }
     func setAVOffset(_ v: Double) { avOffset = v; hub.avOffset = v }
+
+    // MARK: share-live link (api/live.php — an open watch page, not a camera)
+
+    /// Fetch the (stable) watch link so it can be shown and copied even before going live.
+    func loadShareLink() async {
+        if let r = try? await API.shared.get("/api/live.php?action=link"), let u = r["url"] as? String { shareURL = u }
+    }
+
+    func setShare(_ on: Bool) async {
+        shareOn = on
+        guard running || starting else { return }
+        if on { await startShare() } else { stopShare() }
+    }
+
+    private func startShare() async {
+        guard hub.streamer == nil else { return }
+        let s = ShareStreamer()
+        s.onViewers = { [weak self] n in Task { @MainActor in self?.viewers = n } }
+        s.onProblem = { [weak self] p in Task { @MainActor in self?.shareProblem = p } }
+        hub.streamer = s
+        if let r = try? await API.shared.post("/api/live.php?action=start"), let u = r["url"] as? String {
+            shareURL = u
+        } else {
+            note = "The live link isn't set up on the server yet."
+        }
+    }
+
+    private func stopShare() {
+        hub.streamer?.stop()
+        hub.streamer = nil
+        viewers = 0
+        shareProblem = nil
+    }
 
     // MARK: photo / record
 

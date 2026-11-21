@@ -46,7 +46,7 @@ struct StudioView: View {
             }
         }
         .screenBackground()
-        .task { await live.loadModels(); await live.loadVoiceConfig() }
+        .task { await live.loadModels(); await live.loadVoiceConfig(); await live.loadShareLink() }
         .sheet(item: $web, onDismiss: { Task { await app.refreshBalance() } }) { SafariView(url: $0).ignoresSafeArea() }
         .onChange(of: phase) { p in
             // With PiP the camera keeps running behind other apps. Without it iOS pauses the camera, so stop billing.
@@ -113,6 +113,13 @@ struct StudioView: View {
                 if live.fps > 0 { Pill(text: "\(live.fps) fps", color: Theme.brand2) }
             }
             .padding(12)
+        }
+        .overlay(alignment: .topTrailing) {
+            if live.shareOn && busy {
+                Pill(text: live.shareProblem == nil ? "Link · \(live.viewers) watching" : "Link: slow",
+                     color: live.shareProblem == nil ? Theme.good : Theme.bad)
+                    .padding(12)
+            }
         }
         .overlay(alignment: .bottomLeading) {
             if showInput && busy {
@@ -264,6 +271,30 @@ struct StudioView: View {
             }
 
             VoiceCard()
+
+            Card {
+                Toggle(isOn: Binding(get: { live.shareOn }, set: { on in Task { await live.setShare(on: on) } })) {
+                    VStack(alignment: .leading, spacing: 2) {
+                        Text("Share live to my link").font(.subheadline.weight(.semibold)).foregroundStyle(Theme.text)
+                        Text("Anyone who opens your link watches your character live in a browser. It is a watch page, not a camera.")
+                            .font(.caption).foregroundStyle(Theme.dim)
+                    }
+                }
+                .tint(Theme.good)
+                if !live.shareURL.isEmpty {
+                    HStack(spacing: 8) {
+                        Text(live.shareURL).font(.caption.monospaced()).foregroundStyle(Theme.brand2).lineLimit(1).truncationMode(.middle)
+                        Spacer()
+                        Button { UIPasteboard.general.string = live.shareURL } label: { Image(systemName: "doc.on.doc") }
+                            .foregroundStyle(Theme.dim)
+                        ShareLink(item: live.shareURL) { Image(systemName: "square.and.arrow.up") }
+                            .foregroundStyle(Theme.dim)
+                    }
+                    .padding(10)
+                    .background(Theme.elev2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.line))
+                }
+            }
 
             Card {
                 SectionTitle(text: "Camera & output")

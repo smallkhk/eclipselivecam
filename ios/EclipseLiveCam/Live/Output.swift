@@ -28,6 +28,11 @@ final class OutputHub {
     weak var pipDisplay: VideoSurface?
     private(set) var lastFrame: CVPixelBuffer?
     private var recorder: Recorder?
+    private var _streamer: ShareStreamer?
+    var streamer: ShareStreamer? {
+        get { lock.lock(); defer { lock.unlock() }; return _streamer }
+        set { lock.lock(); _streamer = newValue; lock.unlock() }
+    }
 
     /// main thread: first frame of a session, size changes, fps
     var onFirstFrame: (() -> Void)?
@@ -67,8 +72,11 @@ final class OutputHub {
             DispatchQueue.main.async { self.onFPS?(f) }
         }
 
-        guard let recorder else { return }
-        recorder.append(framed(pb) ?? pb)
+        let streamer = self.streamer
+        guard recorder != nil || streamer != nil else { return }
+        let out = framed(pb) ?? pb
+        recorder?.append(out)
+        streamer?.encode(out)
     }
 
     /// the frame with the current zoom applied (nil = no zoom)
