@@ -3,6 +3,8 @@ name: Build EclipseLiveCam (Windows)
 on:
   push:
     branches: [main, desktop-virtual-cam]
+    # The iPhone app builds in its own workflow; don't ship a Windows update for it.
+    paths-ignore: ["ios/**", ".github/workflows/build-ios.yml"]
   pull_request:
   workflow_dispatch:
 

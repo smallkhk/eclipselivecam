@@ -1,0 +1,63 @@
+name: EclipseLiveCam
+options:
+  bundleIdPrefix: online.eclipselivecam
+  deploymentTarget:
+    iOS: "16.0"
+packages:
+  LiveKit:
+    url: https://github.com/livekit/client-sdk-swift
+    exactVersion: 2.19.0
+  LiveKitWebRTC:
+    url: https://github.com/livekit/webrtc-xcframework
+    exactVersion: 150.7871.04
+settings:
+  base:
+    # The EclipseLiveCam server (accounts, credits, AI tokens). CI can override it.
+    ECLIPSE_SERVER_URL: https://eclipselivecam.online
+    MARKETING_VERSION: 1.0.0
+    CURRENT_PROJECT_VERSION: 1
+    SWIFT_VERSION: 5.0
+targets:
+  EclipseLiveCam:
+    type: application
+    platform: iOS
+    sources: [EclipseLiveCam]
+    dependencies:
+      - package: LiveKit
+      - package: LiveKitWebRTC
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: online.eclipselivecam.ios
+        PRODUCT_NAME: EclipseLiveCam
+        TARGETED_DEVICE_FAMILY: "1,2"
+        ASSETCATALOG_COMPILER_APPICON_NAME: AppIcon
+        GENERATE_INFOPLIST_FILE: NO
+    info:
+      path: EclipseLiveCam/Info.plist
+      properties:
+        CFBundleDisplayName: EclipseLiveCam
+        CFBundleShortVersionString: $(MARKETING_VERSION)
+        CFBundleVersion: $(CURRENT_PROJECT_VERSION)
+        EclipseServerURL: $(ECLIPSE_SERVER_URL)
+        LSRequiresIPhoneOS: true
+        UIRequiresFullScreen: false
+        UIStatusBarStyle: UIStatusBarStyleLightContent
+        UIViewControllerBasedStatusBarAppearance: true
+        UILaunchScreen:
+          UIColorName: LaunchBg
+        UIApplicationSceneManifest:
+          UIApplicationSupportsMultipleScenes: false
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        UISupportedInterfaceOrientations~ipad:
+          - UIInterfaceOrientationPortrait
+          - UIInterfaceOrientationPortraitUpsideDown
+          - UIInterfaceOrientationLandscapeLeft
+          - UIInterfaceOrientationLandscapeRight
+        NSCameraUsageDescription: EclipseLiveCam uses the camera to transform your video live with AI.
+        NSMicrophoneUsageDescription: EclipseLiveCam uses the microphone during live sessions.
+        NSPhotoLibraryAddUsageDescription: EclipseLiveCam saves your photos and recordings to Photos.
+        NSPhotoLibraryUsageDescription: EclipseLiveCam lets you pick a reference image from your photos.
+        UIBackgroundModes: [voip, audio]

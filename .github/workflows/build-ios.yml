@@ -1,0 +1,74 @@
+name: Build EclipseLiveCam (iOS)
+
+on:
+  push:
+    branches: [main, desktop-virtual-cam]
+    paths: ["ios/**", ".github/workflows/build-ios.yml"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  build-ios:
+    runs-on: macos-15
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Pick the newest stable Xcode
+        run: |
+          X=$(ls -d /Applications/Xcode_*.app | grep -viE 'beta|rc' | sort -V | tail -1)
+          sudo xcode-select -s "$X"
+          xcodebuild -version
+
+      - name: Cache Swift packages (LiveKit, WebRTC)
+        uses: actions/cache@v4
+        with:
+          path: ios/spm
+          key: spm-${{ hashFiles('ios/project.yml') }}
+
+      - name: Generate the Xcode project
+        working-directory: ios
+        run: |
+          brew install xcodegen
+          xcodegen generate
+
+      - name: Build (unsigned)
+        working-directory: ios
+        run: |
+          xcodebuild -project EclipseLiveCam.xcodeproj -scheme EclipseLiveCam -configuration Release \
+            -sdk iphoneos -destination 'generic/platform=iOS' -derivedDataPath build \
+            -clonedSourcePackagesDirPath spm -skipPackagePluginValidation -skipMacroValidation \
+            CODE_SIGNING_ALLOWED=NO CODE_SIGNING_REQUIRED=NO CODE_SIGN_IDENTITY="" \
+            MARKETING_VERSION=1.0.${{ github.run_number }} CURRENT_PROJECT_VERSION=${{ github.run_number }} \
+            build > build.log 2>&1 || { grep -E "error:" build.log | sort -u | head -80; tail -40 build.log; exit 1; }
+          grep -E "EclipseLiveCam/.*warning:" build.log | sort -u | head -40 || true
+          tail -3 build.log
+
+      - name: Package .ipa
+        working-directory: ios
+        run: |
+          rm -rf Payload && mkdir Payload
+          cp -R build/Build/Products/Release-iphoneos/EclipseLiveCam.app Payload/
+          zip -qry "EclipseLiveCam-iOS-1.0.${{ github.run_number }}.ipa" Payload
+          ls -lh *.ipa
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: EclipseLiveCam-iOS
+          path: ios/*.ipa
+          if-no-files-found: error
+
+      # A pre-release, never "Latest": the Windows app auto-updates from the Latest release.
+      - name: Publish the .ipa
+        if: github.event_name != 'pull_request'
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: ios-v1.0.${{ github.run_number }}
+          name: EclipseLiveCam iOS 1.0.${{ github.run_number }}
+          target_commitish: ${{ github.sha }}
+          prerelease: true
+          make_latest: false
+          body: |
+            iPhone / iPad app (unsigned). Install the .ipa with Sideloadly, AltStore, SideStore or esign.
+          files: ios/*.ipa

@@ -4,3 +4,11 @@ native/softcam/
 native/out/
 native/packages/
 native/obj/
+
+# iOS build output
+ios/build/
+ios/spm/
+ios/*.xcodeproj/
+ios/Payload/
+ios/*.ipa
+ios/EclipseLiveCam/Info.plist
