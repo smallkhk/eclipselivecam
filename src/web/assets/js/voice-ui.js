@@ -201,6 +201,85 @@ if (recBtn) {
   });
 }
 
+// ── Browse the ElevenLabs voice library (filters: gender, age, region, language)
+const libModal = $('voiceLib');
+const libResults = $('libResults');
+const libSearch = $('libSearch');
+const libFilters = ['libGender', 'libAge', 'libAccent', 'libLanguage'].map($);
+let libPreview = null;      // currently playing <audio>
+let libTimer = null;
+
+function openLib() { libModal.classList.remove('hidden'); searchLib(); }
+function closeLib() {
+  libModal.classList.add('hidden');
+  if (libPreview) { libPreview.pause(); libPreview = null; }
+}
+
+async function searchLib() {
+  libResults.innerHTML = '<p class="hint">Searching…</p>';
+  const q = new URLSearchParams({ action: 'library' });
+  const [g, a, acc, lang] = libFilters;
+  if (g.value) q.set('gender', g.value);
+  if (a.value) q.set('age', a.value);
+  if (acc.value) q.set('accent', acc.value);
+  if (lang.value) q.set('language', lang.value);
+  if (libSearch.value.trim()) q.set('search', libSearch.value.trim());
+  try {
+    const { voices } = await API.get('/api/voice_clone.php?' + q.toString());
+    renderLib(voices);
+  } catch (err) {
+    libResults.innerHTML = `<p class="hint">${err.message || 'Could not load the library.'}</p>`;
+  }
+}
+
+function renderLib(voices) {
+  if (!voices.length) { libResults.innerHTML = '<p class="hint">No voices match those filters. Try fewer filters.</p>'; return; }
+  libResults.innerHTML = '';
+  for (const v of voices) {
+    const row = document.createElement('div');
+    row.style.cssText = 'display:flex;align-items:center;gap:10px;padding:10px 0;border-bottom:1px solid var(--line,#2a2a33)';
+    const tags = [v.gender, v.age && v.age.replace('_', ' '), v.accent, v.language].filter(Boolean).join(' · ');
+    const meta = document.createElement('div');
+    meta.style.cssText = 'flex:1;min-width:0';
+    meta.innerHTML = `<div style="font-weight:600">${esc(v.name)}</div><div class="faint" style="font-size:.78rem">${esc(tags)}</div>`;
+    const play = document.createElement('button');
+    play.className = 'btn btn-ghost btn-sm'; play.type = 'button'; play.textContent = '▶';
+    play.disabled = !v.preview_url;
+    play.onclick = () => {
+      if (libPreview) libPreview.pause();
+      libPreview = new Audio(v.preview_url); libPreview.play().catch(() => {});
+    };
+    const use = document.createElement('button');
+    use.className = 'btn btn-ghost btn-sm'; use.type = 'button'; use.textContent = 'Use';
+    use.onclick = async () => {
+      use.disabled = true; use.textContent = 'Adding…';
+      try {
+        const r = await API.post('/api/voice_clone.php?action=add_shared', {
+          public_owner_id: v.public_owner_id, voice_id: v.voice_id, name: v.name,
+        });
+        await loadVoices(r.voice_id);
+        toast(`"${r.name}" added — selected above.`);
+        closeLib();
+      } catch (err) {
+        use.disabled = false; use.textContent = 'Use';
+        toast(err.message || 'Could not add this voice.', true);
+      }
+    };
+    row.append(meta, play, use);
+    libResults.appendChild(row);
+  }
+}
+
+function esc(s) { const d = document.createElement('div'); d.textContent = s ?? ''; return d.innerHTML; }
+
+if ($('voiceBrowseBtn')) {
+  $('voiceBrowseBtn').addEventListener('click', openLib);
+  $('voiceLibClose').addEventListener('click', closeLib);
+  libModal.addEventListener('click', (e) => { if (e.target === libModal) closeLib(); });
+  libFilters.forEach((el) => el.addEventListener('change', searchLib));
+  libSearch.addEventListener('input', () => { clearTimeout(libTimer); libTimer = setTimeout(searchLib, 400); });
+}
+
 (async function init() {
   try {
     const cfg = await API.get('/api/voice.php?action=config');

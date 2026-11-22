@@ -123,6 +123,83 @@ switch ($action) {
         break;
     }
 
+    // ── search the ElevenLabs shared voice library with filters ──────────────
+    case 'library': {
+        $key = eleven_key();
+        if ($key === '') json_err('Voice library is not configured on the server.', 500);
+
+        $q = ['page_size' => '30'];
+        foreach (['gender', 'age', 'accent', 'language', 'search', 'category', 'use_cases'] as $p) {
+            $v = trim((string)($_GET[$p] ?? ''));
+            if ($v !== '') $q[$p] = $v;
+        }
+        $page = max(0, (int)($_GET['page'] ?? 0));
+        if ($page > 0) $q['page'] = (string)$page;
+
+        $url = 'https://api.elevenlabs.io/v1/shared-voices?' . http_build_query($q);
+        $ch  = curl_init($url);
+        curl_setopt_array($ch, [
+            CURLOPT_HTTPHEADER     => ['xi-api-key: ' . $key, 'Accept: application/json'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 30,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        if ($resp === false || $code < 200 || $code >= 300) json_err('Could not load the voice library.', 502);
+
+        $data  = json_decode($resp, true);
+        $out   = [];
+        foreach (($data['voices'] ?? []) as $v) {
+            $out[] = [
+                'voice_id'       => $v['voice_id'] ?? '',
+                'public_owner_id'=> $v['public_owner_id'] ?? '',
+                'name'           => $v['name'] ?? 'Voice',
+                'gender'         => $v['gender'] ?? '',
+                'age'            => $v['age'] ?? '',
+                'accent'         => $v['accent'] ?? '',
+                'language'       => $v['language'] ?? '',
+                'description'    => $v['description'] ?? '',
+                'preview_url'    => $v['preview_url'] ?? '',
+            ];
+        }
+        json_out(['ok' => true, 'voices' => $out, 'has_more' => (bool)($data['has_more'] ?? false)]);
+        break;
+    }
+
+    // ── add a library voice to the account so the changer can use it ─────────
+    case 'add_shared': {
+        if ($_SERVER['REQUEST_METHOD'] !== 'POST') json_err('Method not allowed', 405);
+        $key = eleven_key();
+        if ($key === '') json_err('Voice library is not configured on the server.', 500);
+        $body  = (array)json_decode(file_get_contents('php://input'), true);
+        $owner = trim((string)($body['public_owner_id'] ?? ''));
+        $vid   = trim((string)($body['voice_id'] ?? ''));
+        $name  = trim((string)($body['name'] ?? 'Library voice'));
+        if ($owner === '' || $vid === '') json_err('Pick a voice from the library first.', 400);
+        if ($name === '' || mb_strlen($name) > 60) $name = 'Library voice';
+
+        $ch = curl_init('https://api.elevenlabs.io/v1/voices/add/' . rawurlencode($owner) . '/' . rawurlencode($vid));
+        curl_setopt_array($ch, [
+            CURLOPT_POST           => true,
+            CURLOPT_POSTFIELDS     => json_encode(['new_name' => $name]),
+            CURLOPT_HTTPHEADER     => ['xi-api-key: ' . $key, 'Content-Type: application/json', 'Accept: application/json'],
+            CURLOPT_RETURNTRANSFER => true,
+            CURLOPT_TIMEOUT        => 60,
+        ]);
+        $resp = curl_exec($ch);
+        $code = curl_getinfo($ch, CURLINFO_HTTP_CODE);
+        curl_close($ch);
+        $data = json_decode($resp, true);
+        if ($code < 200 || $code >= 300) {
+            $msg = $data['detail']['message'] ?? 'Could not add this voice.';
+            if (is_array($msg)) $msg = 'Could not add this voice.';
+            json_err($msg, 400);
+        }
+        json_out(['ok' => true, 'voice_id' => $data['voice_id'] ?? $vid, 'name' => $name]);
+        break;
+    }
+
     default:
         json_err('Unknown action', 404);
 }
