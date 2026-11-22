@@ -39,7 +39,7 @@ async function checkCable() {
   }
 }
 
-async function loadVoices() {
+async function loadVoices(selectId) {
   const { voices } = await API.get('/api/voice.php?action=voices');
   voiceSelect.innerHTML = '';
   for (const v of voices) {
@@ -50,8 +50,13 @@ async function loadVoices() {
   }
   if (!voices.length) voiceSelect.innerHTML = '<option value="">No voices on the account</option>';
   try {
-    const saved = localStorage.getItem('eclipse_voice');
-    if (saved && voices.some((v) => v.id === saved)) voiceSelect.value = saved;
+    if (selectId && voices.some((v) => v.id === selectId)) {
+      voiceSelect.value = selectId;
+      localStorage.setItem('eclipse_voice', selectId);
+    } else {
+      const saved = localStorage.getItem('eclipse_voice');
+      if (saved && voices.some((v) => v.id === saved)) voiceSelect.value = saved;
+    }
     const mode = localStorage.getItem('eclipse_voice_mode');
     if (mode) modeSelect.value = mode;
   } catch {}
@@ -97,6 +102,104 @@ btn.addEventListener('click', () => {
 
 // Stop cleanly (and record the session) when the page or app closes.
 window.addEventListener('pagehide', () => { if (changer?.running) changer.stop(); });
+
+// ── Train & save a new voice (ElevenLabs Instant Voice Cloning) ──────────────
+const nameEl = $('voiceTrainName');
+const recBtn = $('voiceRecBtn');
+const fileEl = $('voiceFile');
+const sampleInfo = $('voiceSampleInfo');
+const trainBtn = $('voiceTrainBtn');
+const trainStatus = $('voiceTrainStatus');
+
+let recorder = null;       // MediaRecorder while recording
+let recStream = null;      // its mic stream
+let recChunks = [];
+let recStart = 0;
+let recTimer = null;
+let recordedBlob = null;   // the recorded sample
+
+function fmtKB(bytes) { return bytes < 1024 * 1024 ? `${Math.round(bytes / 1024)} KB` : `${(bytes / 1048576).toFixed(1)} MB`; }
+
+function currentSample() {
+  if (fileEl.files && fileEl.files[0]) return fileEl.files[0];
+  if (recordedBlob) return new File([recordedBlob], 'recording.webm', { type: recordedBlob.type || 'audio/webm' });
+  return null;
+}
+
+function refreshTrainState() {
+  const s = currentSample();
+  trainBtn.disabled = !(nameEl.value.trim() && s);
+  if (s && !sampleInfo.dataset.recording) {
+    const src = (fileEl.files && fileEl.files[0]) ? 'File' : 'Recording';
+    sampleInfo.textContent = `${src} ready — ${fmtKB(s.size)}.`;
+  }
+}
+
+async function startRec() {
+  try {
+    recStream = await navigator.mediaDevices.getUserMedia({
+      audio: { deviceId: $('micSelect')?.value ? { exact: $('micSelect').value } : undefined, channelCount: 1 },
+    });
+  } catch { toast('Could not open the microphone.', true); return; }
+  recChunks = [];
+  recordedBlob = null;
+  fileEl.value = '';
+  recorder = new MediaRecorder(recStream);
+  recorder.ondataavailable = (e) => { if (e.data.size) recChunks.push(e.data); };
+  recorder.onstop = () => {
+    recordedBlob = new Blob(recChunks, { type: recorder.mimeType || 'audio/webm' });
+    recStream.getTracks().forEach((t) => t.stop());
+    recStream = null; recorder = null;
+    clearInterval(recTimer);
+    delete sampleInfo.dataset.recording;
+    recBtn.textContent = '● Record sample';
+    recBtn.classList.remove('btn-danger');
+    refreshTrainState();
+  };
+  recorder.start();
+  recStart = Date.now();
+  sampleInfo.dataset.recording = '1';
+  recBtn.textContent = '■ Stop recording';
+  recBtn.classList.add('btn-danger');
+  recTimer = setInterval(() => {
+    const sec = Math.floor((Date.now() - recStart) / 1000);
+    sampleInfo.textContent = `Recording… ${sec}s (aim for 30–60s, keep talking clearly)`;
+    if (sec >= 90) recorder.stop();   // ElevenLabs needs no more than this
+  }, 250);
+}
+
+if (recBtn) {
+  recBtn.addEventListener('click', () => {
+    if (recorder && recorder.state === 'recording') recorder.stop();
+    else startRec();
+  });
+  nameEl.addEventListener('input', refreshTrainState);
+  fileEl.addEventListener('change', () => { recordedBlob = null; refreshTrainState(); });
+
+  trainBtn.addEventListener('click', async () => {
+    const sample = currentSample();
+    const name = nameEl.value.trim();
+    if (!sample || !name) return;
+    const form = new FormData();
+    form.append('name', name);
+    form.append('sample', sample, sample.name || 'sample.webm');
+    trainBtn.disabled = true;
+    trainStatus.textContent = 'Training the voice… this can take up to a minute.';
+    try {
+      const r = await API.call('/api/voice_clone.php?action=clone', { method: 'POST', form });
+      trainStatus.textContent = `✅ "${r.name}" trained and saved.`;
+      nameEl.value = ''; fileEl.value = ''; recordedBlob = null; sampleInfo.textContent = '';
+      await loadVoices(r.voice_id);           // refresh list and select the new voice
+      toast(`Voice "${r.name}" saved — it's selected above.`);
+      $('voiceTrain').open = false;
+    } catch (err) {
+      trainStatus.textContent = '';
+      toast(err.message || 'Voice training failed.', true);
+    } finally {
+      refreshTrainState();
+    }
+  });
+}
 
 (async function init() {
   try {

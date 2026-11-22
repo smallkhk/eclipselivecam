@@ -74,6 +74,23 @@
       <button class="btn btn-ghost" id="voiceBtn" type="button">🎙️ Start voice changer</button>
       <span class="hint" id="voiceStatus"></span>
       <span class="faint" style="font-size:.76rem" id="voicePrice"></span>
+
+      <details id="voiceTrain" style="margin-top:12px;border-top:1px solid var(--line,#2a2a33);padding-top:12px">
+        <summary style="cursor:pointer;font-weight:600">➕ Train &amp; save a new voice</summary>
+        <div style="display:flex;flex-direction:column;gap:8px;margin-top:10px">
+          <span class="hint">Record about 30–60 seconds of clear speech, or choose an audio file. The voice is cloned, saved to your account, and added to the list above.</span>
+          <label for="voiceTrainName">Voice name</label>
+          <input type="text" id="voiceTrainName" maxlength="60" placeholder="e.g. My studio voice" />
+          <div style="display:flex;gap:8px;align-items:center;flex-wrap:wrap">
+            <button class="btn btn-ghost btn-sm" id="voiceRecBtn" type="button">● Record sample</button>
+            <span class="faint" style="font-size:.8rem">or</span>
+            <input type="file" id="voiceFile" accept="audio/*" style="flex:1;min-width:140px" />
+          </div>
+          <span class="hint" id="voiceSampleInfo"></span>
+          <button class="btn btn-ghost" id="voiceTrainBtn" type="button" disabled>Train &amp; save voice</button>
+          <span class="hint" id="voiceTrainStatus"></span>
+        </div>
+      </details>
     </div>
 
     <div class="meter hidden" id="meter">
