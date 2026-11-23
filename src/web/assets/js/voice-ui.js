@@ -39,7 +39,7 @@ async function checkCable() {
   }
 }
 
-async function loadVoices(selectId) {
+async function loadVoices(selectId, selectName) {
   const { voices } = await API.get('/api/voice.php?action=voices');
   voiceSelect.innerHTML = '';
   for (const v of voices) {
@@ -48,11 +48,20 @@ async function loadVoices(selectId) {
     o.textContent = v.name;
     voiceSelect.appendChild(o);
   }
-  if (!voices.length) voiceSelect.innerHTML = '<option value="">No voices on the account</option>';
+  // A just-added voice may not be in the server's cached list yet — add it now
+  // so it can be selected and used immediately.
+  if (selectId && !voices.some((v) => v.id === selectId)) {
+    const o = document.createElement('option');
+    o.value = selectId;
+    o.textContent = selectName || 'New voice';
+    voiceSelect.appendChild(o);
+  }
+  if (!voices.length && !selectId) voiceSelect.innerHTML = '<option value="">No voices on the account</option>';
   try {
-    if (selectId && voices.some((v) => v.id === selectId)) {
+    if (selectId) {
       voiceSelect.value = selectId;
       localStorage.setItem('eclipse_voice', selectId);
+      if (changer && changer.running) changer.setVoice(selectId);   // apply live
     } else {
       const saved = localStorage.getItem('eclipse_voice');
       if (saved && voices.some((v) => v.id === saved)) voiceSelect.value = saved;
@@ -98,6 +107,11 @@ async function start() {
 btn.addEventListener('click', () => {
   if (changer && changer.running) changer.stop();
   else start();
+});
+
+voiceSelect.addEventListener('change', () => {
+  try { localStorage.setItem('eclipse_voice', voiceSelect.value); } catch {}
+  if (changer && changer.running) changer.setVoice(voiceSelect.value);
 });
 
 // Stop cleanly (and record the session) when the page or app closes.
@@ -189,7 +203,7 @@ if (recBtn) {
       const r = await API.call('/api/voice_clone.php?action=clone', { method: 'POST', form });
       trainStatus.textContent = `✅ "${r.name}" trained and saved.`;
       nameEl.value = ''; fileEl.value = ''; recordedBlob = null; sampleInfo.textContent = '';
-      await loadVoices(r.voice_id);           // refresh list and select the new voice
+      await loadVoices(r.voice_id, r.name);   // refresh list and select the new voice
       toast(`Voice "${r.name}" saved — it's selected above.`);
       $('voiceTrain').open = false;
     } catch (err) {
@@ -259,7 +273,7 @@ function renderLib(voices) {
         const r = await API.post('/api/voice_clone.php?action=add_shared', {
           public_owner_id: v.public_owner_id, voice_id: v.voice_id, name: v.name,
         });
-        await loadVoices(r.voice_id);
+        await loadVoices(r.voice_id, r.name);
         toast(`"${r.name}" added — selected above.`);
         closeLib();
       } catch (err) {
