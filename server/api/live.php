@@ -18,14 +18,6 @@
  *   GET  ?action=poll&s=&v=          { live, viewers, name, audioSeq }
  *   GET  ?action=view&s=&v=          the latest JPEG (204 if offline)
  *   GET  ?action=audiopoll&s=&after= the next audio chunk after seq (204 if none)
- *   GET  ?action=audiowav&s=         recent audio as a WAV for a cross-domain
- *                                    <audio> element (plays without CORS; a
- *                                    per-browser cookie serves only new audio)
- *
- * A viewer page on another domain can show the stream with a plain <img> on
- * ?action=view and play sound with an <audio> on ?action=audiowav — both load
- * cross-origin without CORS. Only scripted fetch() of raw bytes needs CORS,
- * which is deliberately not enabled.
  */
 require_once __DIR__ . '/config.php';
 
@@ -76,16 +68,8 @@ function live_clear_audio($token) {
     @unlink(live_path($token, 'aud'));
 }
 
-function live_wav_header($dataLen, $rate) {
-    $ch = 1; $bits = 16;
-    $byteRate = $rate * $ch * $bits / 8;
-    $blockAlign = $ch * $bits / 8;
-    return pack('A4VA4A4VvvVVvvA4V', 'RIFF', 36 + $dataLen, 'WAVE', 'fmt ', 16, 1,
-                $ch, $rate, $byteRate, $blockAlign, $bits, 'data', $dataLen);
-}
-
 // ── Public watch endpoints (no login) ───────────────────────────────────────
-if ($action === 'poll' || $action === 'view' || $action === 'audiopoll' || $action === 'audiowav') {
+if ($action === 'poll' || $action === 'view' || $action === 'audiopoll') {
     $token = (string)($_GET['s'] ?? '');
     $meta  = live_path($token, 'json');
     if (!$meta || !is_file($meta)) { http_response_code(404); exit; }
@@ -119,35 +103,6 @@ if ($action === 'poll' || $action === 'view' || $action === 'audiopoll' || $acti
             }
         }
         http_response_code(204); exit;
-    }
-
-    if ($action === 'audiowav') {
-        // Serve only the audio this browser hasn't had yet, as a WAV an <audio>
-        // element can play cross-domain (no CORS). Position tracked per browser
-        // in a cookie on this (the stream's) domain.
-        $cur = live_audio_seq($token);
-        $ck  = 'ap_' . $token;
-        $pos = isset($_COOKIE[$ck]) ? (int)$_COOKIE[$ck] : 0;
-        if ($pos < 0 || $pos > $cur) $pos = max(0, $cur - 1);
-        $lo  = max($pos + 1, $cur - AUDIO_KEEP + 1, 1);
-        $pcm = '';
-        if ($cur > 0 && $lo <= $cur) {
-            for ($n = $lo; $n <= $cur; $n++) {
-                $f = live_path($token, 'a' . $n);
-                if ($f && is_file($f)) $pcm .= (string)@file_get_contents($f);
-            }
-        }
-        if ($pcm !== '') {
-            setcookie($ck, (string)$cur, ['expires' => 0, 'path' => '/', 'secure' => true, 'httponly' => true, 'samesite' => 'None']);
-        } else {
-            $pcm = str_repeat("\0", (int)(0.4 * AUDIO_RATE) * 2);   // brief silence, keep position
-        }
-        header('Content-Type: audio/wav');
-        header('Cache-Control: no-store');
-        header('Content-Length: ' . (44 + strlen($pcm)));
-        echo live_wav_header(strlen($pcm), AUDIO_RATE);
-        echo $pcm;
-        exit;
     }
 
     // action=view: the latest frame
