@@ -99,9 +99,11 @@ final class OutputHub {
     func addVoice(_ pcm: Data, spokenAt: CFTimeInterval) {
         let at = spokenAt + avOffset
         let streamer = self.streamer
+        let local = self.localServer
         queue.async {
             if self.recorder != nil { self.recordedVoice.append((pcm, at)) }
             streamer?.sendAudio(pcm)   // the live link plays phrases as they arrive
+            local?.addAudio(pcm)       // and so does the on-phone server (127.0.0.1)
         }
     }
 

@@ -11,6 +11,11 @@ import QuartzCore
 ///
 /// It keeps serving only while the app is running — i.e. in the foreground or
 /// while Picture-in-Picture / background audio keeps it alive.
+///
+/// Endpoints: `/` watch page, `/view` latest JPEG (204 when not live),
+/// `/audio?after=N` the next changed-voice chunk after N (24 kHz s16le mono,
+/// `X-Seq` / `X-Rate` headers; 204 when none), `/status` `{"live","audioSeq"}`.
+/// The audio mirrors what the share link gets (`ShareStreamer.sendAudio`).
 final class LocalServer {
     private var listener: NWListener?
     private let queue = DispatchQueue(label: "eclipse.localserver")
@@ -26,7 +31,25 @@ final class LocalServer {
     private let fps: Double = 15
     private let maxSide: CGFloat = 960
 
+    // changed-voice audio, newest last (same chunks the share link uploads)
+    static let audioRate = 24000
+    private let audioKeep = 60
+    private var audio: [(seq: Int, pcm: Data)] = []
+    private var audioSeq = 0
+
     var url: String { port != 0 ? "http://127.0.0.1:\(port)/" : "" }
+
+    // MARK: audio from the output hub
+
+    /// One phrase of the changed voice (24 kHz s16le mono), in order.
+    func addAudio(_ pcm: Data) {
+        guard !pcm.isEmpty else { return }
+        lock.lock()
+        audioSeq += 1
+        audio.append((audioSeq, pcm))
+        if audio.count > audioKeep { audio.removeFirst(audio.count - audioKeep) }
+        lock.unlock()
+    }
 
     // MARK: frames from the output hub
 
@@ -65,7 +88,7 @@ final class LocalServer {
 
     func stop() {
         listener?.cancel(); listener = nil; port = 0
-        lock.lock(); latest = nil; lock.unlock()
+        lock.lock(); latest = nil; audio = []; lock.unlock()
     }
 
     // MARK: HTTP (minimal)
@@ -79,7 +102,8 @@ final class LocalServer {
         conn.receive(minimumIncompleteLength: 1, maximumLength: 4096) { [weak self] data, _, isComplete, err in
             guard let self else { conn.cancel(); return }
             if let data, let line = String(data: data, encoding: .utf8) {
-                self.respond(conn, path: self.path(of: line))
+                let (path, query) = self.target(of: line)
+                self.respond(conn, path: path, query: query)
             } else if isComplete || err != nil {
                 conn.cancel()
             } else {
@@ -88,30 +112,54 @@ final class LocalServer {
         }
     }
 
-    private func path(of request: String) -> String {
-        guard let first = request.split(separator: "\r\n").first else { return "/" }
+    /// The request's path and its query values (`?after=12` → ["after": "12"]).
+    private func target(of request: String) -> (String, [String: String]) {
+        guard let first = request.split(separator: "\r\n").first else { return ("/", [:]) }
         let parts = first.split(separator: " ")
-        guard parts.count >= 2 else { return "/" }
-        var p = String(parts[1])
-        if let q = p.firstIndex(of: "?") { p = String(p[..<q]) }
-        return p
+        guard parts.count >= 2 else { return ("/", [:]) }
+        let full = String(parts[1])
+        guard let q = full.firstIndex(of: "?") else { return (full, [:]) }
+        var query: [String: String] = [:]
+        for pair in full[full.index(after: q)...].split(separator: "&") {
+            let kv = pair.split(separator: "=", maxSplits: 1)
+            if let k = kv.first { query[String(k)] = kv.count > 1 ? String(kv[1]) : "" }
+        }
+        return (String(full[..<q]), query)
     }
 
-    private func respond(_ conn: NWConnection, path: String) {
+    private func respond(_ conn: NWConnection, path: String, query: [String: String]) {
         if path == "/" || path == "/index.html" {
             send(conn, status: "200 OK", type: "text/html; charset=utf-8", body: Data(Self.page.utf8))
         } else if path == "/view" {
             lock.lock(); let d = latest; let fresh = Date().timeIntervalSince(latestAt) < 2.5; lock.unlock()
             if let d, fresh { send(conn, status: "200 OK", type: "image/jpeg", body: d) }
             else { send(conn, status: "204 No Content", type: "image/jpeg", body: Data()) }
+        } else if path == "/audio" {
+            let after = Int(query["after"] ?? "") ?? 0
+            lock.lock()
+            let next = audio.first { $0.seq > after }
+            let current = audioSeq
+            lock.unlock()
+            if let next {
+                send(conn, status: "200 OK", type: "application/octet-stream", body: next.pcm,
+                     extra: ["X-Seq": "\(next.seq)", "X-Rate": "\(Self.audioRate)"])
+            } else {
+                send(conn, status: "204 No Content", type: "application/octet-stream", body: Data(),
+                     extra: ["X-Seq": "\(current)", "X-Rate": "\(Self.audioRate)"])
+            }
+        } else if path == "/status" {
+            lock.lock(); let live = latest != nil && Date().timeIntervalSince(latestAt) < 2.5; let seq = audioSeq; lock.unlock()
+            send(conn, status: "200 OK", type: "application/json",
+                 body: Data("{\"live\":\(live),\"audioSeq\":\(seq)}".utf8))
         } else {
             send(conn, status: "404 Not Found", type: "text/plain", body: Data("not found".utf8))
         }
     }
 
-    private func send(_ conn: NWConnection, status: String, type: String, body: Data) {
+    private func send(_ conn: NWConnection, status: String, type: String, body: Data, extra: [String: String] = [:]) {
         var header = "HTTP/1.1 \(status)\r\n"
         header += "Content-Type: \(type)\r\n"
+        for (k, v) in extra { header += "\(k): \(v)\r\n" }
         header += "Content-Length: \(body.count)\r\n"
         header += "Cache-Control: no-store\r\n"
         header += "Connection: close\r\n\r\n"
