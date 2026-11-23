@@ -124,6 +124,21 @@
     }
   }
 
+  // Local fast preview: encode the current canvas to JPEG ~10×/s and hand it to
+  // the app, which serves it on 127.0.0.1 for a browser on this PC.
+  let localBusy = false;
+  function sendLocal() {
+    if (localBusy || !D.localFrame || !canvas.width) return;
+    localBusy = true;
+    canvas.toBlob((blob) => {
+      if (!blob) { localBusy = false; return; }
+      blob.arrayBuffer()
+        .then((ab) => { try { D.localFrame(new Uint8Array(ab)); } catch (e) {} localBusy = false; })
+        .catch(() => { localBusy = false; });
+    }, 'image/jpeg', 0.6);
+  }
+  setInterval(sendLocal, 100);
+
   // The Studio swaps window.__eclipseStream on start/stop.
   setInterval(() => setStream(window.__eclipseStream || null), 300);
   // Re-send the standby card now and then, e.g. after the camera restarts.
@@ -183,6 +198,18 @@
 
   D.onVcamStatus(render);
   D.vcamStatus().then(render);
+
+  // Show the local watch URL (this computer only, fast).
+  if (D.localUrl) {
+    D.localUrl().then((u) => {
+      const el = document.getElementById('localWatch');
+      if (el && u) {
+        el.classList.remove('hidden');
+        el.innerHTML = 'Watch on this PC (fast, no internet): '
+          + '<a href="' + u + '" target="_blank" rel="noopener" style="color:var(--brand-2);font-weight:600">' + u + '</a>';
+      }
+    }).catch(() => {});
+  }
   // The Studio's Video shape switch: the camera follows it, so a portrait
   // stream comes out of the camera as portrait.
   const followShape = (shape) => {

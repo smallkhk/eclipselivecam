@@ -4,6 +4,8 @@ const { contextBridge, ipcRenderer } = require('electron');
 
 contextBridge.exposeInMainWorld('eclipseDesktop', {
   vcamFrame: (rgba) => ipcRenderer.send('vcam:frame', rgba),
+  localFrame: (jpeg) => ipcRenderer.send('local:frame', jpeg),
+  localUrl: () => ipcRenderer.invoke('local:url'),
   vcamStatus: () => ipcRenderer.invoke('vcam:status'),
   vcamInstall: () => ipcRenderer.invoke('vcam:install'),
   onVcamStatus: (cb) => ipcRenderer.on('vcam:status', (e, s) => cb(s)),

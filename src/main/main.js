@@ -20,6 +20,7 @@ const fs = require('fs');
 const vcam = require('./vcam');
 const activation = require('./activation');
 const updater = require('./updater');
+const localserver = require('./localserver');
 
 const SITE_HOST = 'eclipselivecam.online';
 const SITE_ORIGIN = `https://${SITE_HOST}`;
@@ -137,6 +138,9 @@ function isAppUrl(u) {
 
 // ── IPC: app pages ───────────────────────────────────────────────────────────
 ipcMain.on('vcam:frame', (e, data) => vcam.frame(data));
+// Local-only fast preview (127.0.0.1): the renderer sends a JPEG of the output.
+ipcMain.on('local:frame', (e, buf) => localserver.setFrame(Buffer.from(buf)));
+ipcMain.handle('local:url', () => localserver.url());
 ipcMain.handle('vcam:status', () => vcam.status());
 ipcMain.handle('vcam:install', async () => { await vcam.install(); await vcam.restart(); return vcam.status(); });
 ipcMain.handle('app:version', () => app.getVersion());
@@ -366,6 +370,7 @@ app.whenReady().then(async () => {
   migrateCameraSettings();
   await vcam.setOrientation(loadSettings().cameraOrientation || 'landscape');
   vcam.start();
+  localserver.start();
 
   activated = await checkActivation(ses);
   createMain();
@@ -373,6 +378,7 @@ app.whenReady().then(async () => {
 
 app.on('before-quit', () => {
   vcam.stop();
+  localserver.stop();
   // Make sure the login cookie is on disk so the next launch stays signed in.
   session.fromPartition(PARTITION).cookies.flushStore().catch(() => {});
 });
