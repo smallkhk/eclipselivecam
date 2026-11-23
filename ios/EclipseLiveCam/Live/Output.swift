@@ -33,6 +33,11 @@ final class OutputHub {
         get { lock.lock(); defer { lock.unlock() }; return _streamer }
         set { lock.lock(); _streamer = newValue; lock.unlock() }
     }
+    private var _localServer: LocalServer?
+    var localServer: LocalServer? {
+        get { lock.lock(); defer { lock.unlock() }; return _localServer }
+        set { lock.lock(); _localServer = newValue; lock.unlock() }
+    }
 
     /// main thread: first frame of a session, size changes, fps
     var onFirstFrame: (() -> Void)?
@@ -73,10 +78,12 @@ final class OutputHub {
         }
 
         let streamer = self.streamer
-        guard recorder != nil || streamer != nil else { return }
+        let local = self.localServer
+        guard recorder != nil || streamer != nil || local != nil else { return }
         let out = framed(pb) ?? pb
         recorder?.append(out)
         streamer?.encode(out)
+        local?.encode(out)
     }
 
     /// the frame with the current zoom applied (nil = no zoom)

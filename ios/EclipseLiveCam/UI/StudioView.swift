@@ -323,6 +323,21 @@ struct StudioView: View {
                     .background(Theme.elev2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
                     .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.line))
                 }
+                if !live.localURL.isEmpty {
+                    VStack(alignment: .leading, spacing: 6) {
+                        HStack(spacing: 8) {
+                            Text(live.localURL).font(.caption.monospaced()).foregroundStyle(Theme.brand2).lineLimit(1).truncationMode(.middle)
+                            Spacer()
+                            Button { UIPasteboard.general.string = live.localURL } label: { Image(systemName: "doc.on.doc") }
+                                .foregroundStyle(Theme.dim)
+                        }
+                        Text("Fast local preview — open this in Safari on this iPhone. Keep the app alive with Picture-in-Picture while you switch to Safari.")
+                            .font(.caption2).foregroundStyle(Theme.dim)
+                    }
+                    .padding(10)
+                    .background(Theme.elev2, in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+                    .overlay(RoundedRectangle(cornerRadius: 12, style: .continuous).stroke(Theme.line))
+                }
             }
 
             Card {

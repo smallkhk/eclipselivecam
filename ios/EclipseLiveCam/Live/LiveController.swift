@@ -82,6 +82,9 @@ final class LiveController: ObservableObject {
 
     @Published var playingFile = false
     private var filePlayer: FilePlayer?
+    // local fast preview (this phone only, 127.0.0.1)
+    @Published var localURL = ""
+    let localServer = LocalServer()
 
     let camera = Camera()
     let hub = OutputHub()
@@ -186,6 +189,7 @@ final class LiveController: ObservableObject {
             if voiceOn && voiceAvailable && !voiceID.isEmpty { await startVoice() } else { AudioSessionSetup.activate() }
             try await camera.start(position: backCamera ? .back : .front)
             pip.setEnabled(true)
+            startLocal()
             if shareOn { await startShare() }
 
             // 3. Connect the AI. Neither path puts a permanent key on the phone.
@@ -285,6 +289,7 @@ final class LiveController: ObservableObject {
         fp.onFrame = { pb in hub.push(pb) }
         filePlayer = fp
         pip.setEnabled(true)
+        startLocal()
         if shareOn { await startShare() }
         fp.start(url: url)
         playingFile = true
@@ -295,6 +300,18 @@ final class LiveController: ObservableObject {
     private func stopFilePlayback() {
         filePlayer?.stop(); filePlayer = nil
         playingFile = false
+    }
+
+    private func startLocal() {
+        localServer.start()
+        hub.localServer = localServer
+        localURL = localServer.url
+    }
+
+    private func stopLocal() {
+        hub.localServer = nil
+        localServer.stop()
+        localURL = ""
     }
 
     func stop(reason: String = "") async {
@@ -319,6 +336,7 @@ final class LiveController: ObservableObject {
         if recording { await toggleRecording() }
         stopVoice()
         stopShare()
+        stopLocal()
         await e?.stop()
         camera.stop()
         pip.setEnabled(false)
