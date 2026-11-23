@@ -208,6 +208,7 @@ const libSearch = $('libSearch');
 const libFilters = ['libGender', 'libAge', 'libAccent', 'libLanguage'].map($);
 let libPreview = null;      // currently playing <audio>
 let libTimer = null;
+let libUseCase = '';        // active category chip
 
 function openLib() { libModal.classList.remove('hidden'); searchLib(); }
 function closeLib() {
@@ -224,6 +225,7 @@ async function searchLib() {
   if (acc.value) q.set('accent', acc.value);
   if (lang.value) q.set('language', lang.value);
   if (libSearch.value.trim()) q.set('search', libSearch.value.trim());
+  if (libUseCase) q.set('use_cases', libUseCase);
   try {
     const { voices } = await API.get('/api/voice_clone.php?' + q.toString());
     renderLib(voices);
@@ -278,6 +280,15 @@ if ($('voiceBrowseBtn')) {
   libModal.addEventListener('click', (e) => { if (e.target === libModal) closeLib(); });
   libFilters.forEach((el) => el.addEventListener('change', searchLib));
   libSearch.addEventListener('input', () => { clearTimeout(libTimer); libTimer = setTimeout(searchLib, 400); });
+
+  const cats = [...document.querySelectorAll('#libCats .libcat')];
+  cats[0]?.classList.add('active');
+  cats.forEach((c) => c.addEventListener('click', () => {
+    cats.forEach((x) => x.classList.remove('active'));
+    c.classList.add('active');
+    libUseCase = c.dataset.uc || '';
+    searchLib();
+  }));
 }
 
 (async function init() {

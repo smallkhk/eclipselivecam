@@ -146,6 +146,10 @@
   </main>
 </div>
 
+<style>
+  .libcat{white-space:nowrap;padding:5px 12px;border-radius:999px;border:1px solid var(--line,#2a2a33);background:transparent;color:var(--text,#ddd);font-size:.82rem;cursor:pointer}
+  .libcat.active{background:var(--brand,#6c5ce7);border-color:var(--brand,#6c5ce7);color:#fff}
+</style>
 <div id="voiceLib" class="hidden" style="position:fixed;inset:0;z-index:50;background:rgba(0,0,0,.6);display:flex;align-items:center;justify-content:center;padding:16px">
   <div style="background:var(--panel,#16161c);border:1px solid var(--line,#2a2a33);border-radius:14px;max-width:640px;width:100%;max-height:86vh;display:flex;flex-direction:column;overflow:hidden">
     <div style="display:flex;align-items:center;justify-content:space-between;padding:14px 16px;border-bottom:1px solid var(--line,#2a2a33)">
@@ -178,6 +182,16 @@
           <option value="nl">Dutch</option><option value="tr">Turkish</option>
           <option value="ru">Russian</option>
         </select>
+      </div>
+      <div id="libCats" style="display:flex;gap:6px;overflow-x:auto;padding-bottom:2px">
+        <button type="button" class="libcat" data-uc="" >All</button>
+        <button type="button" class="libcat" data-uc="conversational">Conversational</button>
+        <button type="button" class="libcat" data-uc="narrative_story">Narration</button>
+        <button type="button" class="libcat" data-uc="characters_animation">Characters</button>
+        <button type="button" class="libcat" data-uc="social_media">Social Media</button>
+        <button type="button" class="libcat" data-uc="informative_educational">Educational</button>
+        <button type="button" class="libcat" data-uc="advertisement">Advertisement</button>
+        <button type="button" class="libcat" data-uc="entertainment_tv">Entertainment</button>
       </div>
     </div>
     <div id="libResults" style="overflow:auto;padding:8px 16px;flex:1"></div>
