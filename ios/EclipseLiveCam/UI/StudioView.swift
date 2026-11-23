@@ -1,5 +1,22 @@
 import PhotosUI
 import SwiftUI
+import UniformTypeIdentifiers
+
+/// A picked video copied to a temp file so AVPlayer can read it.
+struct PickedMovie: Transferable {
+    let url: URL
+    static var transferRepresentation: some TransferRepresentation {
+        FileRepresentation(contentType: .movie) { movie in
+            SentTransferredFile(movie.url)
+        } importing: { received in
+            let dest = FileManager.default.temporaryDirectory
+                .appendingPathComponent("eclipse-src-\(UUID().uuidString).mov")
+            try? FileManager.default.removeItem(at: dest)
+            try FileManager.default.copyItem(at: received.file, to: dest)
+            return PickedMovie(url: dest)
+        }
+    }
+}
 
 struct StudioView: View {
     @EnvironmentObject var app: AppModel
@@ -9,6 +26,7 @@ struct StudioView: View {
     @State private var showInput = true
     @State private var web: URL?
     @State private var pick: PhotosPickerItem?
+    @State private var videoPick: PhotosPickerItem?
 
     private struct Preset: Hashable { let name: String; let prompt: String }
     private static let presets: [Preset] = [
@@ -59,6 +77,17 @@ struct StudioView: View {
             Task {
                 if let d = try? await item.loadTransferable(type: Data.self), let img = UIImage(data: d) { live.setReference(img) }
                 pick = nil
+            }
+        }
+        .onChange(of: videoPick) { item in
+            guard let item else { return }
+            Task {
+                if let movie = try? await item.loadTransferable(type: PickedMovie.self) {
+                    await live.playVideoFile(movie.url)
+                } else {
+                    live.note = "Could not load that video."
+                }
+                videoPick = nil
             }
         }
     }
@@ -189,7 +218,7 @@ struct StudioView: View {
             if !live.note.isEmpty && busy {
                 Text(live.note).font(.footnote).foregroundStyle(Theme.text.opacity(0.85))
             }
-            if live.running { meter }
+            if live.running && !live.playingFile { meter }
 
             Card {
                 SectionTitle(text: "AI model")
@@ -350,7 +379,7 @@ struct StudioView: View {
             if busy {
                 Button { Task { await live.stop() } } label: { Label("Stop", systemImage: "stop.fill") }
                     .buttonStyle(PrimaryButtonStyle(danger: true))
-                if live.running {
+                if live.running && !live.playingFile {
                     Button { Task { await live.apply() } } label: {
                         if live.applying { ProgressView().tint(.white) } else { Label("Apply", systemImage: "wand.and.stars") }
                     }
@@ -361,6 +390,10 @@ struct StudioView: View {
                 Button { Task { await live.start() } } label: { Label("Start live stream", systemImage: "play.fill") }
                     .buttonStyle(PrimaryButtonStyle())
                     .disabled(live.model == nil)
+                PhotosPicker(selection: $videoPick, matching: .videos) {
+                    Label("Video file", systemImage: "film")
+                }
+                .buttonStyle(SoftButtonStyle())
             }
         }
         .padding(.horizontal, 14).padding(.top, 10).padding(.bottom, 6)

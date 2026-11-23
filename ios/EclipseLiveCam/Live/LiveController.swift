@@ -80,6 +80,9 @@ final class LiveController: ObservableObject {
 
     var onBalance: (Int) -> Void = { _ in }
 
+    @Published var playingFile = false
+    private var filePlayer: FilePlayer?
+
     let camera = Camera()
     let hub = OutputHub()
     let router = FrameRouter()
@@ -265,10 +268,40 @@ final class LiveController: ObservableObject {
         }
     }
 
+    // MARK: play a pre-recorded video file (no AI, no credits)
+
+    /// Output a video file straight to the screen, PiP, recording and share link,
+    /// with no camera and no AI engine. Any live session is stopped first.
+    func playVideoFile(_ url: URL) async {
+        if running || starting { await stop() }
+        stopFilePlayback()
+        elapsed = 0; spent = 0; maxSeconds = 0
+        UIApplication.shared.isIdleTimerDisabled = true
+        AudioSessionSetup.activate()
+        hub.reset()
+        hub.avOffset = avOffset
+        let hub = self.hub
+        let fp = FilePlayer()
+        fp.onFrame = { pb in hub.push(pb) }
+        filePlayer = fp
+        pip.setEnabled(true)
+        if shareOn { await startShare() }
+        fp.start(url: url)
+        playingFile = true
+        running = true
+        status = "Playing video file"; statusLive = true; note = ""
+    }
+
+    private func stopFilePlayback() {
+        filePlayer?.stop(); filePlayer = nil
+        playingFile = false
+    }
+
     func stop(reason: String = "") async {
         guard !stopping, running || starting || hold != nil else { return }
         stopping = true
         defer { stopping = false }
+        stopFilePlayback()
         beatTask?.cancel(); tickTask?.cancel()
         let e = engine
         engine = nil; router.engine = nil
