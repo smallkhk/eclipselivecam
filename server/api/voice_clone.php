@@ -41,6 +41,14 @@ function eleven_key(): string {
     return $env;
 }
 
+// Drop any cached voice list so voice.php rebuilds it with the new voice.
+function bust_voice_cache(): void {
+    foreach (['voices-cache.json', 'voices_cache.json', 'voices.json'] as $n) {
+        $p = DATA_DIR . '/' . $n;
+        if (is_file($p)) @unlink($p);
+    }
+}
+
 switch ($action) {
 
     case 'clone': {
@@ -96,6 +104,7 @@ switch ($action) {
         $vid = $data['voice_id'] ?? '';
         if ($vid === '') json_err('The voice service did not return a voice.', 502);
 
+        bust_voice_cache();
         json_out(['ok' => true, 'voice_id' => $vid, 'name' => $name]);
         break;
     }
@@ -196,6 +205,7 @@ switch ($action) {
             if (is_array($msg)) $msg = 'Could not add this voice.';
             json_err($msg, 400);
         }
+        bust_voice_cache();
         json_out(['ok' => true, 'voice_id' => $data['voice_id'] ?? $vid, 'name' => $name]);
         break;
     }
