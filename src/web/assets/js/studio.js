@@ -528,7 +528,51 @@ function applyPrompt() {
   }
 }
 
+// ── Play a pre-recorded video file straight to the output + virtual camera ───
+// No AI, no credits: the file's frames are captured and handed to desktop.js
+// exactly where the AI output would go.
+let fileVideo = null;
+let fileStream = null;
+
+async function playVideoFile(file) {
+  if (!file) return;
+  if (session || realtimeClient) await stop();   // end any live session first
+  stopVideoFile();
+
+  fileVideo = document.createElement('video');
+  fileVideo.src = URL.createObjectURL(file);
+  fileVideo.loop = true;
+  fileVideo.playsInline = true;
+  try {
+    await fileVideo.play();
+  } catch {
+    toast('Could not play that video file.', true);
+    stopVideoFile();
+    return;
+  }
+  fileStream = fileVideo.captureStream ? fileVideo.captureStream()
+             : (fileVideo.mozCaptureStream ? fileVideo.mozCaptureStream() : null);
+  if (!fileStream) { toast('This browser cannot capture that video.', true); stopVideoFile(); return; }
+
+  remoteVideo.srcObject = fileStream;
+  remotePlaceholder.style.display = 'none';
+  window.__eclipseStream = fileStream;   // desktop.js polls this → virtual camera
+  setLiveUI(true);
+  setStatus('on', 'Playing video file');
+  toast('Playing your video to the EclipseLiveCam camera — no AI, no credits.');
+}
+
+function stopVideoFile() {
+  if (fileStream) { fileStream.getTracks().forEach((t) => t.stop()); fileStream = null; }
+  if (fileVideo) {
+    try { fileVideo.pause(); } catch {}
+    if ((fileVideo.src || '').startsWith('blob:')) URL.revokeObjectURL(fileVideo.src);
+    fileVideo = null;
+  }
+}
+
 async function stop() {
+  stopVideoFile();
   const seconds = elapsed();
   const holdId = session?.holdId ?? pendingHoldId;
   pendingHoldId = null;
@@ -580,9 +624,14 @@ async function goFullscreen() {
 // ── Wire up ─────────────────────────────────────────────────────────────────
 // The desktop app calls this when its window closes, so a running session is
 // billed and its deposit refunded before the app quits.
-window.__eclipseStop = () => (session ? stop() : null);
+window.__eclipseStop = () => ((session || fileVideo) ? stop() : null);
 startBtn.addEventListener('click', start);
 stopBtn.addEventListener('click', stop);
+$('videoFileInput')?.addEventListener('change', (e) => {
+  const f = e.target.files?.[0];
+  if (f) playVideoFile(f);
+  e.target.value = '';
+});
 applyPromptBtn.addEventListener('click', applyPrompt);
 pipBtn.addEventListener('click', togglePip);
 fsBtn.addEventListener('click', goFullscreen);
