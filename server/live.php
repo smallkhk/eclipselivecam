@@ -93,15 +93,21 @@ $s = substr(preg_replace('/[^a-f0-9]/', '', (string)($_GET['s'] ?? '')), 0, 20);
     } catch (e) {}
   }
 
-  function videoLoop() {
-    if (live && !loading) {
-      loading = true;
-      var im = new Image();
-      im.onload = function () { img.src = im.src; img.style.display = 'block'; msg.style.display = 'none'; loading = false; };
-      im.onerror = function () { loading = false; };
-      im.src = '/api/live.php?action=view&s=' + s + '&v=' + vid + '&t=' + Date.now();
-    }
-    requestAnimationFrame(videoLoop);
+  // Pull frames with a few requests in flight at once, so the round-trip time to
+  // the server overlaps instead of capping the frame rate. Only ever show a newer
+  // frame than the one on screen, so overlapping replies can't jump backwards.
+  var inflight = 0, MAXQ = 3, lastShown = 0;
+  function fetchFrame() {
+    if (!live || inflight >= MAXQ) return;
+    inflight++;
+    var t = Date.now();
+    var im = new Image();
+    im.onload = function () {
+      if (t >= lastShown) { lastShown = t; img.src = im.src; img.style.display = 'block'; msg.style.display = 'none'; }
+      inflight--;
+    };
+    im.onerror = function () { inflight--; };
+    im.src = '/api/live.php?action=view&s=' + s + '&v=' + vid + '&t=' + t;
   }
 
   function playPCM(ab) {
@@ -135,7 +141,7 @@ $s = substr(preg_replace('/[^a-f0-9]/', '', (string)($_GET['s'] ?? '')), 0, 20);
   poll();
   setInterval(function () { if (!missing) poll(); }, 2500);
   setInterval(pullAudio, 250);
-  requestAnimationFrame(videoLoop);
+  setInterval(fetchFrame, 40);   // ~25 attempts/s, capped by MAXQ and the upload rate
 </script>
 </body>
 </html>

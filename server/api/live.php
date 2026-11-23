@@ -105,8 +105,8 @@ if ($action === 'poll' || $action === 'view' || $action === 'audiopoll') {
         http_response_code(204); exit;
     }
 
-    // action=view: the latest frame
-    live_viewers($token, $vid);
+    // action=view: the latest frame. Viewer counting happens in poll (every few
+    // seconds), never here — this runs many times a second and must stay light.
     if (!$live) { http_response_code(204); exit; }
     header('Content-Type: image/jpeg');
     header('Cache-Control: no-store');
