@@ -31,6 +31,14 @@ export async function findCableOutput() {
   return devices.find((d) => d.kind === 'audiooutput' && CABLE_PLAYBACK.test(d.label)) || null;
 }
 
+/** Every VB-CABLE playback device, for when more than one cable is installed. */
+export async function listCableOutputs() {
+  const devices = await navigator.mediaDevices.enumerateDevices();
+  return devices
+    .filter((d) => d.kind === 'audiooutput' && CABLE_PLAYBACK.test(d.label))
+    .map((d) => ({ deviceId: d.deviceId, label: d.label }));
+}
+
 // AudioWorklet that hands raw mic samples to the page.
 const WORKLET = `
 class Tap extends AudioWorkletProcessor {

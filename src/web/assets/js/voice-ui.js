@@ -1,5 +1,5 @@
 /* ── Studio panel for the live voice changer (see voice.js) ──────────────── */
-import { VoiceChanger, findCableOutput, CABLE_DOWNLOAD } from './voice.js';
+import { VoiceChanger, findCableOutput, listCableOutputs, CABLE_DOWNLOAD } from './voice.js';
 
 const $ = (id) => document.getElementById(id);
 const box = $('voiceBox');
@@ -9,6 +9,8 @@ const monitorBox = $('voiceMonitor');
 const btn = $('voiceBtn');
 const statusEl = $('voiceStatus');
 const cableEl = $('voiceCable');
+const outputSelect = $('voiceOutput');
+const outputLabel = $('voiceOutputLabel');
 
 let changer = null;
 let cable = null;
@@ -26,17 +28,41 @@ function setRunning(on) {
   voiceSelect.disabled = on;
   modeSelect.disabled = on;
   monitorBox.disabled = on;
+  if (outputSelect) outputSelect.disabled = on;
 }
 
-async function checkCable() {
-  try { cable = await findCableOutput(); } catch { cable = null; }
+let cables = [];     // every VB-CABLE playback device
+const matchingMic = (label) => label.replace(/\bInput\b/i, 'Output');
+function savedCableLabel() { try { return localStorage.getItem('eclipse_voice_cable'); } catch { return null; } }
+function cableHint() {
   if (cable) {
-    cableEl.innerHTML = 'In Zoom, WhatsApp, OBS… choose <strong>CABLE Output (VB-Audio Virtual Cable)</strong> as the microphone.';
+    cableEl.innerHTML = 'In Zoom, WhatsApp, OBS… choose <strong>' + esc(matchingMic(cable.label)) + '</strong> as the microphone.';
   } else {
     cableEl.innerHTML = 'To use your new voice in calls, install the free <strong>VB-CABLE</strong> virtual mic once, then restart the app. '
       + `<a href="${CABLE_DOWNLOAD}" target="_blank" rel="noopener" style="color:var(--brand-2);font-weight:600">Download VB-CABLE</a>`
       + '<br>Without it you can still try voices with “Hear my new voice”.';
   }
+}
+
+async function checkCable() {
+  try { cables = await listCableOutputs(); } catch { cables = []; }
+  const saved = savedCableLabel();
+  cable = cables.find((c) => c.label === saved) || cables[0] || null;
+
+  // Only show the picker when there's an actual choice to make (2+ cables).
+  const show = cables.length >= 2;
+  if (outputSelect) outputSelect.classList.toggle('hidden', !show);
+  if (outputLabel) outputLabel.classList.toggle('hidden', !show);
+  if (show && outputSelect) {
+    outputSelect.innerHTML = '';
+    for (const c of cables) {
+      const o = document.createElement('option');
+      o.value = c.label; o.textContent = c.label;
+      outputSelect.appendChild(o);
+    }
+    if (cable) outputSelect.value = cable.label;
+  }
+  cableHint();
 }
 
 async function loadVoices(selectId, selectName) {
@@ -113,6 +139,14 @@ voiceSelect.addEventListener('change', () => {
   try { localStorage.setItem('eclipse_voice', voiceSelect.value); } catch {}
   if (changer && changer.running) changer.setVoice(voiceSelect.value);
 });
+
+if (outputSelect) {
+  outputSelect.addEventListener('change', () => {
+    try { localStorage.setItem('eclipse_voice_cable', outputSelect.value); } catch {}
+    cable = cables.find((c) => c.label === outputSelect.value) || cable;
+    cableHint();
+  });
+}
 
 // Stop cleanly (and record the session) when the page or app closes.
 window.addEventListener('pagehide', () => { if (changer?.running) changer.stop(); });
